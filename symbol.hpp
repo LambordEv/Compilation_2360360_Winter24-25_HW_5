@@ -31,21 +31,22 @@ BuiltInType dataType;                  // Data type (e.g., INT, BYTE, BOOL, etc.
 int offset;                         // Memory offset (for variables or parameters)
 std::vector<BuiltInType> parameterTypes; // Function parameter types
 std::vector<std::string> parameterNames; // Function parameter names
+std::string regName;
 
 public:
     // Default constructor
     Symbol()
-        : name(""), symbolType(SymbolType::VARIABLE), dataType(BuiltInType::TYPE_ERROR), offset(0) {}
+        : name(""), symbolType(SymbolType::VARIABLE), dataType(BuiltInType::TYPE_ERROR), offset(0), regName("") {}
 
     // Constructor for variables
     Symbol(const std::string& name, SymbolType symbolType, BuiltInType dataType, int offset)
-        : name(name), symbolType(symbolType), dataType(dataType), offset(offset) {}
+        : name(name), symbolType(symbolType), dataType(dataType), offset(offset), regName("") {}
 
     // Constructor for functions
     Symbol(const std::string& name, SymbolType symbolType, BuiltInType dataType,
            const std::vector<BuiltInType>& paramTypes, const std::vector<std::string>& paramNames)
         : name(name), symbolType(symbolType), dataType(dataType),
-          offset(0), parameterTypes(paramTypes), parameterNames(paramNames) {}
+          offset(0), parameterTypes(paramTypes), parameterNames(paramNames), regName("") {}
 
     // Getters
     const std::string& getName() const { return name; }
@@ -55,6 +56,8 @@ public:
     int getOffset() const { return offset; }
     const std::vector<BuiltInType>& getParameterTypes() const { return parameterTypes; }
     const std::vector<std::string>& getParameterNames() const { return parameterNames; }
+    void setRegName(const std::string& reg) { regName = reg; }
+    std::string getRegName() const { return regName; }
 
 };
 

@@ -98,6 +98,14 @@ public:
         return scopeStack.top();
     }
 
+    void setRegNameSymTable(const std::string& name, const std::string& reg) { 
+        this->getCurrentScope()->getSymbolName(name)->setRegName(reg);
+    }
+
+    std::string getRegNameSymTable() const { 
+        this->getCurrentScope()->getSymbolName(name)->getRegName();
+    }
+
     void printSymbolTable() const {
         std::stack<Scope*> tempStack(scopeStack);
         std::vector<Scope*> scopes;

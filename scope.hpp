@@ -101,6 +101,14 @@ public:
         return parent ? parent->getSymbolName(name) : nullptr;
     }
 
+    void setRegNameScope(const std::string& name, const std::string& reg) { 
+        this->getSymbolName(name)->setRegName(reg);
+    }
+
+    std::string getRegNameScope() const { 
+        this->getSymbolName(name)->getRegName();
+    }
+
     std::string getScopeName() const {
         return scopeName;
     }
