@@ -62,23 +62,27 @@ class SemanticAnalyzer : public Visitor {
 private:
     // SymbolTable* symbolTable; 
     SymbolTable symbolTable;
-    output::ScopePrinter printer;
+    // output::ScopePrinter printer;
 
 public:
     // SemanticAnalyzer(SymbolTable* symbolTable)
     //     : symbolTable(symbolTable) {}
-    SemanticAnalyzer() : symbolTable(), printer() {}
+    SemanticAnalyzer() : symbolTable() {}
 
     // Start a new scope (for functions, blocks, if, while, etc.)
     void beginScope(string scopeName = "", bool isLoopScope = false) {
         symbolTable.beginScope(isLoopScope, scopeName);
-        printer.beginScope();
+        // printer.beginScope();
+    }
+
+    SymbolTable& getSymbolTable() {
+        return symbolTable;
     }
 
     // End the current scope
     void endScope() {
         symbolTable.endScope();
-        printer.endScope();
+        // printer.endScope();
     }
 
     // Implementations of visit methods
@@ -514,7 +518,7 @@ public:
         if (symbol == nullptr) {
             cout << "In Visit VarDecl symbol returned as nullptr, WTF?!" << endl;
         }
-        printer.emitVar(node.getValueStr(), symbol->getDataType(), symbol->getOffset());
+        // printer.emitVar(node.getValueStr(), symbol->getDataType(), symbol->getOffset());
 
 
         node.getVarId()->accept(*this);
@@ -578,7 +582,7 @@ public:
 
         symbolTable.addParameterSymbol(node.getFormalId(), node.getFormalType(), node.getLine());
         Symbol* symbol = symbolTable.getSymbol(node.getFormalId(), node.getLine());
-        printer.emitVar(node.getFormalId(), node.getFormalType(), symbol->getOffset());
+        // printer.emitVar(node.getFormalId(), node.getFormalType(), symbol->getOffset());
     }
 
     void visit(ast::Formals& node) override {
@@ -592,7 +596,7 @@ public:
         vector<string> paramsIds = node.getFuncParams()->getFormalsIds();
 
         
-        printer.emitFunc(node.getFuncId(), node.getFuncReturnType(), paramsTypes);
+        // printer.emitFunc(node.getFuncId(), node.getFuncReturnType(), paramsTypes);
 
         beginScope(node.getFuncId(), false);
         node.getFuncParams()->accept(*this);
@@ -604,8 +608,8 @@ public:
         // The (this) is the ScopePrinter
         this->symbolTable.addFunctionSymbol("print", BuiltInType::VOID, {BuiltInType::STRING}, {"str"}, -1);
         this->symbolTable.addFunctionSymbol("printi", BuiltInType::VOID, {BuiltInType::INT}, {"num"}, -1);
-        printer.emitFunc("print", BuiltInType::VOID, {BuiltInType::STRING});
-        printer.emitFunc("printi", BuiltInType::VOID, {BuiltInType::INT});
+        // printer.emitFunc("print", BuiltInType::VOID, {BuiltInType::STRING});
+        // printer.emitFunc("printi", BuiltInType::VOID, {BuiltInType::INT});
 
         for (auto& funcDecl : node.getFuncs()) {
             this->symbolTable.addFunctionSymbol(funcDecl->getFuncId(), funcDecl->getFuncReturnType(), funcDecl->getFuncParams()->getFormalsType(), 
@@ -623,7 +627,7 @@ public:
     }
 
     void printResults() {
-        cout << printer;
+        // cout << printer;
     }
 };
 

@@ -103,10 +103,12 @@ public:
 
     void setRegNameScope(const std::string& name, const std::string& reg) { 
         this->getSymbolName(name)->setRegName(reg);
+        printf("Setting reg name for %s to %s\n", name.c_str(), reg.c_str());
     }
 
-    std::string getRegNameScope() const { 
+    std::string getRegNameScope(const std::string& name){ 
         this->getSymbolName(name)->getRegName();
+        printf("Getting reg name for %s\n", name.c_str());
     }
 
     std::string getScopeName() const {

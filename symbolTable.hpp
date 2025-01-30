@@ -102,7 +102,7 @@ public:
         this->getCurrentScope()->getSymbolName(name)->setRegName(reg);
     }
 
-    std::string getRegNameSymTable() const { 
+    std::string getRegNameSymTable(const string& name) { 
         this->getCurrentScope()->getSymbolName(name)->getRegName();
     }
 
