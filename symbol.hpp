@@ -5,6 +5,7 @@
 #include <vector>
 #include "nodes.hpp"
 using namespace ast;
+using namespace std;
 
 enum SymbolType {
     VARIABLE,
@@ -22,16 +23,21 @@ enum BuiltInType {
     STRING
 }; */
 
+// typedef struct RegisterStruct {
+//     string name;
+//     BuiltInType type;
+// } RegisterStruct;
+
 class Symbol {
 
 private:
-std::string name;                   // Name of the symbol
+string name;                   // Name of the symbol
 SymbolType symbolType;              // VARIABLE or FUNCTION
 BuiltInType dataType;                  // Data type (e.g., INT, BYTE, BOOL, etc.)
 int offset;                         // Memory offset (for variables or parameters)
-std::vector<BuiltInType> parameterTypes; // Function parameter types
-std::vector<std::string> parameterNames; // Function parameter names
-std::string regName;
+vector<BuiltInType> parameterTypes; // Function parameter types
+vector<string> parameterNames; // Function parameter names
+string regName;
 
 public:
     // Default constructor
@@ -39,25 +45,25 @@ public:
         : name(""), symbolType(SymbolType::VARIABLE), dataType(BuiltInType::TYPE_ERROR), offset(0), regName("") {}
 
     // Constructor for variables
-    Symbol(const std::string& name, SymbolType symbolType, BuiltInType dataType, int offset)
+    Symbol(const string& name, SymbolType symbolType, BuiltInType dataType, int offset)
         : name(name), symbolType(symbolType), dataType(dataType), offset(offset), regName("") {}
 
     // Constructor for functions
-    Symbol(const std::string& name, SymbolType symbolType, BuiltInType dataType,
-           const std::vector<BuiltInType>& paramTypes, const std::vector<std::string>& paramNames)
+    Symbol(const string& name, SymbolType symbolType, BuiltInType dataType,
+           const vector<BuiltInType>& paramTypes, const vector<string>& paramNames)
         : name(name), symbolType(symbolType), dataType(dataType),
           offset(0), parameterTypes(paramTypes), parameterNames(paramNames), regName("") {}
 
     // Getters
-    const std::string& getName() const { return name; }
+    const string& getName() const { return name; }
     SymbolType getSymbolType() const { return symbolType; }
     BuiltInType getDataType() const { return dataType; }
     void setDataType(BuiltInType newSymbolType) { dataType = newSymbolType; }
     int getOffset() const { return offset; }
-    const std::vector<BuiltInType>& getParameterTypes() const { return parameterTypes; }
-    const std::vector<std::string>& getParameterNames() const { return parameterNames; }
-    void setRegName(const std::string& reg) { regName = reg; }
-    std::string getRegName() const { return regName; }
+    const vector<BuiltInType>& getParameterTypes() const { return parameterTypes; }
+    const vector<string>& getParameterNames() const { return parameterNames; }
+    void setRegName(const string& reg) { regName = reg; }
+    string getRegName() const { return regName; }
 
 };
 

@@ -105,7 +105,7 @@ public:
     }
 
     void visit(ast::ID& node) override {
-        Symbol* var = symbolTable.getSymbol(node.getValueStr(), node.getLine());
+        Symbol* var = symbolTable.getSymbol(node.getValueStr());
         if (!var) {
             errorUndef(node.getLine(), node.getValueStr());
         }
@@ -113,29 +113,6 @@ public:
         if (var && var->getSymbolType() == VARIABLE) {
             node.setType(builtInToNodeType(var->getDataType()));
         }
-        // else {
-        //     cout << "In Visit ID symbol returned as nullptr, WTF?!" << endl;
-        //     std::string scopeName = symbolTable.getCurrentScope()->getScopeName();
-        //     Symbol* func;
-        //     BuiltInType idType = BuiltInType::TYPE_ERROR;
-        //     int index = -1;
-        //     if (scopeName != "") {
-        //         func = symbolTable.getFuncSymbol(scopeName, node.getLine());
-        //         if (func != nullptr && func->getSymbolType() == FUNCTION) {
-        //             vector<string> paramsIds = func->getParameterNames();
-        //             if (std::find(paramsIds.begin(), paramsIds.end(), node.getValueStr()) == paramsIds.end()) {
-        //                 errorUndef(node.getLine(), node.getValueStr());
-        //             }
-        //             index = std::distance(paramsIds.begin(), std::find(paramsIds.begin(), paramsIds.end(), node.getValueStr()));
-        //         }
-        //     }
-        //     if (index == -1) {
-        //         errorUndef(node.getLine(), node.getValueStr());
-        //     }
-        //     idType = func->getParameterTypes()[index];
-        //     node.setType(builtInToNodeType(idType));
-        // }
-        
     }
 
     void visit(ast::BinOp& node) override {
@@ -146,7 +123,7 @@ public:
         BuiltInType rightBuiltInType = BuiltInType::TYPE_ERROR;
 
         if (node.getLeft()->getType() == NODE_ID) {
-            Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr(), node.getLeft()->getLine());
+            Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr());
             leftBuiltInType = left->getDataType();
         }
         else if (node.getLeft()->getType() == NODE_Num) {
@@ -157,7 +134,7 @@ public:
         }
 
         if (node.getRight()->getType() == NODE_ID) {
-            Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr(), node.getRight()->getLine());
+            Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr());
             rightBuiltInType = right->getDataType();
         }
         else if (node.getRight()->getType() == NODE_Num) {
@@ -193,7 +170,7 @@ public:
         BuiltInType rightBuiltInType = BuiltInType::TYPE_ERROR;
 
         if (node.getLeft()->getType() == NODE_ID) {
-            Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr(), node.getLeft()->getLine());
+            Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr());
             leftBuiltInType = left->getDataType();
         }
         else if (node.getLeft()->getType() == NODE_Num) {
@@ -204,7 +181,7 @@ public:
         }
 
         if (node.getRight()->getType() == NODE_ID) {
-            Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr(), node.getRight()->getLine());
+            Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr());
             rightBuiltInType = right->getDataType();
         }
         else if (node.getRight()->getType() == NODE_Num) {
@@ -273,7 +250,7 @@ public:
         //cout << "exp type is: " << node.getExpr()->getType() << endl;
         if (node.getExpr()->getType() == NODE_ID || node.getExpr()->getType() == NODE_Num ||
             node.getExpr()->getType() == NODE_NumB) {
-            expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr(), node.getExpr()->getLine());
+            expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr());
             if(!expSymbol) {
                 originalType = semanticToBuiltInType(node.getExpr()->getType());
                 // cout << "In Visit Cast symbol returned as nullptr, WTF?!" << endl;
@@ -313,7 +290,7 @@ public:
 
     void visit(ast::Call& node) override {
         // printf("Get Symbol in %s\n", "Visit Call");
-        Symbol* func = symbolTable.getSymbol(node.getFuncId(), node.getLine());
+        Symbol* func = symbolTable.getSymbol(node.getFuncId());
         if (func && func->getSymbolType() != FUNCTION) {
             errorDefAsVar(node.getLine(), node.getFuncId());
         }
@@ -330,7 +307,7 @@ public:
         vector<BuiltInType> types;
         for(auto& exp : paramsInFunc) {
             if (exp->getType() == NODE_ID) {
-                Symbol* expSymbol = symbolTable.getSymbol(exp->getValueStr(), exp->getLine());
+                Symbol* expSymbol = symbolTable.getSymbol(exp->getValueStr());
                 if (expSymbol == nullptr) {
                     errorUndef(exp->getLine(), exp->getValueStr());
                 }
@@ -402,7 +379,7 @@ public:
         }
 
         string funcName = symbolTable.getCurrentScope()->getScopeName();
-        Symbol* func = symbolTable.getSymbol(funcName, node.getLine());
+        Symbol* func = symbolTable.getSymbol(funcName);
         if(func == nullptr) {
             errorUndefFunc(node.getLine(), funcName);
         }
@@ -416,7 +393,7 @@ public:
         else {
             // cout << "Expresion is not null --- Its type is " << node.getExpr()->getType() << endl;
             if (node.getExpr()->getType() == NODE_ID) {
-                Symbol* expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr(), node.getExpr()->getLine());
+                Symbol* expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr());
                 if (expSymbol == nullptr) {
                     errorUndef(node.getLine(), node.getExpr()->getValueStr());
                 }
@@ -496,7 +473,7 @@ public:
             //cout << "In Visit VarDecl InitExp Type is " <<  << endl;
             if (node.getVarInitExp()->getType() == NODE_ID) {
                 //cout << "Out 1" << endl;
-                Symbol* expSymbol = symbolTable.getSymbol(node.getVarInitExp()->getValueStr(), node.getVarInitExp()->getLine());
+                Symbol* expSymbol = symbolTable.getSymbol(node.getVarInitExp()->getValueStr());
                 if (expSymbol == nullptr) {
                     //cout << "Out 2" << endl;
                     errorUndef(node.getVarInitExp()->getLine(), node.getVarInitExp()->getValueStr());
@@ -509,12 +486,12 @@ public:
             //cout << "Out 5" << endl;
         }
 
-        if (symbolTable.getSymbol(node.getValueStr(), node.getLine())) {
+        if (symbolTable.getSymbol(node.getValueStr())) {
             errorDef(node.getLine(), node.getValueStr());
         }
 
         symbolTable.addVariableSymbol(node.getValueStr(), node.getVarType(), node.getLine());
-        Symbol* symbol = symbolTable.getSymbol(node.getValueStr(), node.getLine());
+        Symbol* symbol = symbolTable.getSymbol(node.getValueStr());
         if (symbol == nullptr) {
             cout << "In Visit VarDecl symbol returned as nullptr, WTF?!" << endl;
         }
@@ -539,7 +516,7 @@ public:
 
     void visit(ast::Assign& node) override {
         // printf("Get Symbol in %s\n", "Visit Assign");
-        Symbol* var = symbolTable.getSymbol(node.getValueStr(), node.getLine());
+        Symbol* var = symbolTable.getSymbol(node.getValueStr());
         if (!var) {
             errorUndef(node.getLine(), node.getValueStr());
         }
@@ -551,7 +528,7 @@ public:
         BuiltInType varType = var->getDataType();
         BuiltInType expType = BuiltInType::TYPE_ERROR;
         if (node.getAssignExp()->getType() == NODE_ID) {
-            Symbol* expSymbol = symbolTable.getSymbol(node.getAssignExp()->getValueStr(), node.getAssignExp()->getLine());
+            Symbol* expSymbol = symbolTable.getSymbol(node.getAssignExp()->getValueStr());
             if (expSymbol == nullptr) {
                 errorUndef(node.getAssignExp()->getLine(), node.getAssignExp()->getValueStr());
             }
@@ -576,12 +553,12 @@ public:
     }
 
     void visit(ast::Formal& node) override {
-        if (symbolTable.getSymbol(node.getFormalId(), node.getLine())) {
+        if (symbolTable.getSymbol(node.getFormalId())) {
             errorDef(node.getLine(), node.getFormalId());
         }
 
         symbolTable.addParameterSymbol(node.getFormalId(), node.getFormalType(), node.getLine());
-        Symbol* symbol = symbolTable.getSymbol(node.getFormalId(), node.getLine());
+        Symbol* symbol = symbolTable.getSymbol(node.getFormalId());
         // printer.emitVar(node.getFormalId(), node.getFormalType(), symbol->getOffset());
     }
 
@@ -615,7 +592,7 @@ public:
             this->symbolTable.addFunctionSymbol(funcDecl->getFuncId(), funcDecl->getFuncReturnType(), funcDecl->getFuncParams()->getFormalsType(), 
                 funcDecl->getFuncParams()->getFormalsIds(), funcDecl->getFuncIdLine());
         }
-        Symbol* main = symbolTable.getFuncSymbol("main", -1);
+        Symbol* main = symbolTable.getFuncSymbol("main");
       
         if(main == nullptr || main->getDataType() != BuiltInType::VOID || main->getParameterTypes().size() != 0) {
             errorMainMissing();

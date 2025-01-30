@@ -16,11 +16,10 @@ int main() {
     // Parse the input. The result is stored in the global variable `program`
     yyparse();
 
-    // Print the AST using the PrintVisitor
     SemanticAnalyzer analyzer;
     program->accept(analyzer);
 
-    CodeGenerator codeGenerator(analyzer.getSymbolTable());
+    CodeGenerator codeGenerator;
     program->accept(codeGenerator);
 
     analyzer.printResults();

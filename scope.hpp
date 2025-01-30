@@ -96,7 +96,7 @@ public:
     Symbol* getSymbolName(const std::string& name) {
         auto it = symbolTable.find(name);
         if (it != symbolTable.end()) {
-            return &(it->second);
+            return &((*it).second);
         }
         return parent ? parent->getSymbolName(name) : nullptr;
     }
@@ -107,8 +107,9 @@ public:
     }
 
     std::string getRegNameScope(const std::string& name){ 
-        this->getSymbolName(name)->getRegName();
+        string result = this->getSymbolName(name)->getRegName();
         printf("Getting reg name for %s\n", name.c_str());
+        return result;
     }
 
     std::string getScopeName() const {

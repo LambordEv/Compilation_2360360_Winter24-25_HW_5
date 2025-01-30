@@ -32,8 +32,9 @@ public:
 
     ~SymbolTable() {
         while (!scopeStack.empty()) {
-            delete scopeStack.top();
+            Scope* top = scopeStack.top();
             scopeStack.pop();
+            delete top;
         }
     }
 
@@ -49,31 +50,15 @@ public:
                            const std::vector<BuiltInType>& paramTypes,
                            const std::vector<std::string>& paramNames, int lineno) {
         globalScope->addFunctionSymbol(name, returnType, paramTypes, paramNames, lineno);
-        // Scope* currScope = beginScope(false, name);
-        // for (size_t i = 0; i < paramNames.size(); ++i) {
-        //     char paramName[2096] = {0};                     /// TODO - Not appropriate
-        //     sscanf(paramName, "%s-Param%d\0", name.c_str(), i);     /// TODO - Not appropriate
-        //     currScope->addParameterSymbol(paramName, paramTypes[i], lineno);
-        // }
     }
 
-    Symbol* getSymbol(const std::string &name, int lineno) {
-        // printf("Get Symbol in %s\n", "get_Symbol symbolTable");
+    Symbol* getSymbol(const std::string &name) {
         Symbol* symbol = getCurrentScope()->getSymbolName(name);
-        // if (symbol == nullptr) {
-        //     printf("Undefined Variable in %s\n", "getSymbol in symbolTable");
-        //     errorUndef(lineno, name);
-        // }
         return symbol;
     }
 
-    Symbol* getFuncSymbol(const std::string &name, int lineno) {
-        // printf("Get Symbol in %s\n", "get_Symbol symbolTable");
+    Symbol* getFuncSymbol(const std::string &name) {
         Symbol* symbol = globalScope->getSymbolName(name);
-        // if (symbol == nullptr) {
-        //     printf("Undefined Variable in %s\n", "getSymbol in symbolTable");
-        //     errorUndef(lineno, name);
-        // }
         return symbol;
     }
 
@@ -103,7 +88,8 @@ public:
     }
 
     std::string getRegNameSymTable(const string& name) { 
-        this->getCurrentScope()->getSymbolName(name)->getRegName();
+        string result = this->getCurrentScope()->getSymbolName(name)->getRegName();
+        return result;
     }
 
     void printSymbolTable() const {
