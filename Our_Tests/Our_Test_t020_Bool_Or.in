@@ -1,0 +1,6 @@
+void main() {
+    bool trueFlag1 = true or true;
+    bool trueFlag2 = true or false;
+    bool trueFlag3 = false or true;
+    bool falseFlag = false or false;
+}

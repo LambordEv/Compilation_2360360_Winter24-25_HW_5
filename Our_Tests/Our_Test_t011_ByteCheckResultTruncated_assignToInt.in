@@ -1,0 +1,4 @@
+void main() {
+    // We are not sure if in case of assignment to int variable we should truncate or not
+    int x = 2b + 255b;
+}

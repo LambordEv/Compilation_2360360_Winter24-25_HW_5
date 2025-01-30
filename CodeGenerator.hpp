@@ -12,196 +12,222 @@
 using namespace std;
 using namespace ast;
 
+static BuiltInType binOp_ResultType(Exp& left, Exp& right, SymbolTable& symbolTable) {
+    BuiltInType leftBuiltInType = BuiltInType::TYPE_ERROR;
+    BuiltInType rightBuiltInType = BuiltInType::TYPE_ERROR;
+
+    if (left.getType() == NODE_ID) {
+        Symbol* leftSymbol = symbolTable.getSymbol(left.getValueStr());
+        leftBuiltInType = leftSymbol->getDataType();
+    }
+    else if (left.getType() == NODE_Num) {
+        leftBuiltInType = BuiltInType::INT;
+    }
+    else if (left.getType() == NODE_NumB) {
+        leftBuiltInType = BuiltInType::BYTE;
+    }
+
+    if (right.getType() == NODE_ID) {
+        Symbol* rightSymbol = symbolTable.getSymbol(right.getValueStr());
+        rightBuiltInType = rightSymbol->getDataType();
+    }
+    else if (right.getType() == NODE_Num) {
+        rightBuiltInType = BuiltInType::INT;
+    }
+    else if (right.getType() == NODE_NumB) {
+        rightBuiltInType = BuiltInType::BYTE;
+    }
+
+    if (TYPE_ERROR == leftBuiltInType || TYPE_ERROR == rightBuiltInType) {
+        return TYPE_ERROR;
+    } else if(BYTE == leftBuiltInType && BYTE == rightBuiltInType){
+        return BYTE;
+    } else {
+        return INT;
+    }
+}
+
 class CodeGenerator : public Visitor {
 private:
     output::CodeBuffer codeBuffer;
-    SymbolTable* symbolTable;
+    SymbolTable symbolTable;
 
 public:
     // SemanticAnalyzer(SymbolTable* symbolTable)
     //     : symbolTable(symbolTable) {}
-    CodeGenerator(SymbolTable& table) : codeBuffer(), symbolTable(&table) {}
+    CodeGenerator() : codeBuffer(), symbolTable() {}
+
+    void CodeGenerator_beginScope(string scopeName = "", bool isLoopScope = false) {
+        symbolTable.beginScope(isLoopScope, scopeName);
+    }
+
+    void CodeGenerator_endScope() {
+        symbolTable.endScope();
+    }
 
     // Implementations of visit methods
-    void visit(ast::Num& node) override { 
-        // Not Needed ?
+    void visit(Num& node) override { 
+        string currVar = this->codeBuffer.freshVar();
+        if(node.getValueInt() == 0) {
+            currVar = "0";
+        } else {
+            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << std::endl;
+        }
+        node.setRegister(currVar);
     }
 
-    void visit(ast::NumB& node) override {
-        // if (node.getValueInt() > 255) {
-        //     errorByteTooLarge(node.getLine(), node.getValueInt());
-        // }
+    void visit(NumB& node) override {
+        string currVar = this->codeBuffer.freshVar();
+        if(node.getValueInt() == 0) {
+            currVar = "0";
+        } else {
+            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << std::endl;
+            this->codeBuffer << currVar << " = and i32 " << currVar << ", 255" << std::endl; // In case of a negative value
+            this->codeBuffer << currVar << " = zext i32 " << currVar << ", 255" << std::endl;
+        }
+        node.setRegister(currVar);
     }
 
-    void visit(ast::String& node) override {
+    void visit(String& node) override {
         this->codeBuffer.emitString(node.getText());
     }
 
-    void visit(ast::Bool& node) override {
+    void visit(Bool& node) override {
+        string currVar = this->codeBuffer.freshVar();
+        int initBoolValue = node.getValueBool() ? 1 : 0;
+        this->codeBuffer << currVar << " = add i32 " << initBoolValue << ", 0" << std::endl;
+        node.setRegister(currVar);
+    }
+
+    void visit(ID& node) override {
+        Symbol* var = symbolTable.getSymbol(node.getValueStr());
+        if (var && var->getSymbolType() == VARIABLE) {
+            node.setType(NODE_ID);
+        }
+    }
+
+    void visit(BinOp& node) override {
+        node.getLeft()->accept(*this);
+        node.getRight()->accept(*this);
+
+        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        string currVar = this->codeBuffer.freshVar();
+        string resultText = currVar;
+        switch(node.getOp()) {
+            case BinOpType::ADD:
+                // if left in numb and right is numb then truncate, else already written 
+                resultText += " = add i32 " + leftReg + ", " + rightReg;
+                break;
+            case BinOpType::SUB:
+                if(leftReg == rightReg) {
+                    currVar = "0";
+                } else {
+                    resultText += " = sub i32 " + leftReg + ", " + rightReg;
+                }
+                break;
+            case BinOpType::MUL:
+                if (leftReg == "0" || rightReg == "0") {
+                    currVar = "0";
+                } else {
+                    resultText += " = mul i32 " + leftReg + ", " + rightReg;
+                }
+                break;
+            case BinOpType::DIV:
+                if(rightReg == "0") {
+                    // TODO - call errorDivByZero
+                    // TODO - call exit
+                    cout << "Division by zero" << endl;
+                    exit(0);
+                } else {
+                    resultText += " = sdiv i32 " + leftReg + ", " + rightReg;
+                }
+                break;
+        }
+        
+        if (currVar != "0") {
+            if(binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable) == BYTE) {
+                resultText += "\n" + currVar + " = and i32 " + currVar + ", 255";
+            }
+            this->codeBuffer << resultText << std::endl;
+        }
+
+        node.setRegister(currVar);
+    }
+
+    void visit(RelOp& node) override {
+        node.getLeft()->accept(*this);
+        node.getRight()->accept(*this);
+
+        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        string currVar = this->codeBuffer.freshVar();
+        string resultText = currVar;
+        switch(node.getOp()) {
+            case RelOpType::EQ:
+                resultText += " = icmp eq i32 " + leftReg + ", " + rightReg;
+                break;
+            case RelOpType::NE:
+                resultText += " = icmp ne i32 " + leftReg + ", " + rightReg;
+                break;
+            case RelOpType::LT:
+                resultText += " = icmp slt i32 " + leftReg + ", " + rightReg;
+                break;
+            case RelOpType::GT:
+                resultText += " = icmp sgt i32 " + leftReg + ", " + rightReg;
+                break;
+            case RelOpType::LE:
+                resultText += " = icmp sle i32 " + leftReg + ", " + rightReg;
+                break;
+            case RelOpType::GE:
+                resultText += " = icmp sge i32 " + leftReg + ", " + rightReg;
+                break;
+        }
+        this->codeBuffer << resultText << std::endl;
+        node.setRegister(currVar);
+        node.setType(NODE_Bool);
+    }
+
+    void visit(Not& node) override {
+        node.getExpr()->accept(*this);
+        string currVar = this->codeBuffer.freshVar();
+        
+        string expReg = (node.getExpr()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getExpr()->getValueStr()) : node.getExpr()->getRegister();
+        this->codeBuffer << currVar << " = xor i32 " << expReg << ", 1" << std::endl;
+        node.setRegister(currVar);
+    }
+
+    void visit(And& node) override {
+        node.getLeft()->accept(*this);
+        node.getRight()->accept(*this);
+        string currVar = this->codeBuffer.freshVar();
+
+        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        this->codeBuffer << currVar << " = and i32 " << leftReg << ", " << rightReg << std::endl;
+        node.setRegister(currVar);
+    }
+
+    void visit(Or& node) override {
+        node.getLeft()->accept(*this);
+        node.getRight()->accept(*this);
+        string currVar = this->codeBuffer.freshVar();
+
+        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        this->codeBuffer << currVar << " = or i32 " << leftReg << ", " << rightReg << std::endl;
+        node.setRegister(currVar);
+    }
+
+    void visit(Type& node) override {
         // Not Needed ?
     }
 
-    void visit(ast::ID& node) override {
-        // Symbol* var = symbolTable.getSymbol(node.getValueStr(), node.getLine());
-        // if (!var) {
-        //     errorUndef(node.getLine(), node.getValueStr());
-        // }
-
-        // if (var && var->getSymbolType() == VARIABLE) {
-        //     node.setType(builtInToNodeType(var->getDataType()));
-        // }
-        // // else {
-        // //     cout << "In Visit ID symbol returned as nullptr, WTF?!" << endl;
-        // //     std::string scopeName = symbolTable.getCurrentScope()->getScopeName();
-        // //     Symbol* func;
-        // //     BuiltInType idType = BuiltInType::TYPE_ERROR;
-        // //     int index = -1;
-        // //     if (scopeName != "") {
-        // //         func = symbolTable.getFuncSymbol(scopeName, node.getLine());
-        // //         if (func != nullptr && func->getSymbolType() == FUNCTION) {
-        // //             vector<string> paramsIds = func->getParameterNames();
-        // //             if (std::find(paramsIds.begin(), paramsIds.end(), node.getValueStr()) == paramsIds.end()) {
-        // //                 errorUndef(node.getLine(), node.getValueStr());
-        // //             }
-        // //             index = std::distance(paramsIds.begin(), std::find(paramsIds.begin(), paramsIds.end(), node.getValueStr()));
-        // //         }
-        // //     }
-        // //     if (index == -1) {
-        // //         errorUndef(node.getLine(), node.getValueStr());
-        // //     }
-        // //     idType = func->getParameterTypes()[index];
-        // //     node.setType(builtInToNodeType(idType));
-        // // }
-        
-    }
-
-    void visit(ast::BinOp& node) override {
-        // node.getLeft()->accept(*this);
-        // node.getRight()->accept(*this);
-
-        // BuiltInType leftBuiltInType = BuiltInType::TYPE_ERROR;
-        // BuiltInType rightBuiltInType = BuiltInType::TYPE_ERROR;
-
-        // if (node.getLeft()->getType() == NODE_ID) {
-        //     Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr(), node.getLeft()->getLine());
-        //     leftBuiltInType = left->getDataType();
-        // }
-        // else if (node.getLeft()->getType() == NODE_Num) {
-        //     leftBuiltInType = BuiltInType::INT;
-        // }
-        // else if (node.getLeft()->getType() == NODE_NumB) {
-        //     leftBuiltInType = BuiltInType::BYTE;
-        // }
-
-        // if (node.getRight()->getType() == NODE_ID) {
-        //     Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr(), node.getRight()->getLine());
-        //     rightBuiltInType = right->getDataType();
-        // }
-        // else if (node.getRight()->getType() == NODE_Num) {
-        //     rightBuiltInType = BuiltInType::INT;
-        // }
-        // else if (node.getRight()->getType() == NODE_NumB) {
-        //     rightBuiltInType = BuiltInType::BYTE;
-        // }
-
-        // if (TYPE_ERROR == leftBuiltInType || TYPE_ERROR == rightBuiltInType) {
-        //     node.resultType = TYPE_ERROR;
-        //     // printf("Node error, node type is not apropriate - %d --- %d\n", leftBuiltInType, rightBuiltInType);
-        //     errorMismatch(node.getLine());
-        // } else if(BYTE == leftBuiltInType && BYTE == rightBuiltInType){
-        //     node.resultType = BYTE;
-        //     node.setType(NODE_NumB);
-        // } else {
-        //     node.resultType = INT;
-        //     node.setType(NODE_Num);
-        // }
-
-        // if (node.getType() != NODE_Num && node.getType() != NODE_NumB) {
-        //     // printf("Node error, node type is not apropriate - %d\n", node.getType());
-        //     // errorMismatch(node.getLine());
-        // }
-    }
-
-    void visit(ast::RelOp& node) override {
-        // node.getLeft()->accept(*this);
-        // node.getRight()->accept(*this);
-
-        // BuiltInType leftBuiltInType = BuiltInType::TYPE_ERROR;
-        // BuiltInType rightBuiltInType = BuiltInType::TYPE_ERROR;
-
-        // if (node.getLeft()->getType() == NODE_ID) {
-        //     Symbol* left = symbolTable.getSymbol(node.getLeft()->getValueStr(), node.getLeft()->getLine());
-        //     leftBuiltInType = left->getDataType();
-        // }
-        // else if (node.getLeft()->getType() == NODE_Num) {
-        //     leftBuiltInType = BuiltInType::INT;
-        // }
-        // else if (node.getLeft()->getType() == NODE_NumB) {
-        //     leftBuiltInType = BuiltInType::BYTE;
-        // }
-
-        // if (node.getRight()->getType() == NODE_ID) {
-        //     Symbol* right = symbolTable.getSymbol(node.getRight()->getValueStr(), node.getRight()->getLine());
-        //     rightBuiltInType = right->getDataType();
-        // }
-        // else if (node.getRight()->getType() == NODE_Num) {
-        //     rightBuiltInType = BuiltInType::INT;
-        // }
-        // else if (node.getRight()->getType() == NODE_NumB) {
-        //     rightBuiltInType = BuiltInType::BYTE;
-        // }
-
-        // if (node.getLeft()->getType() == NODE_Bool || node.getRight()->getType() == NODE_Bool
-        //     || leftBuiltInType == TYPE_ERROR || leftBuiltInType == TYPE_ERROR){
-        //     // printf("Node error, node type is not apropriate - %d\n", node.getType());
-        //     errorMismatch(node.getLine());
-        // } else {
-        //     node.setType(NODE_Bool);
-        // }
-
-        // if (node.getType() != NODE_Bool) {
-        //     // printf("Node error, node type is not apropriate - %d\n", node.getType());
-        //     // errorMismatch(node.getLine());
-        // }
-    }
-
-    void visit(ast::Not& node) override {
-        // node.getExpr()->accept(*this);
-        
-        // if (node.getExpr()->getType() == NODE_Bool){
-        //     node.setType(NODE_Bool);
-        // } else {
-        //     errorMismatch(node.getLine());
-        // }
-    }
-
-    void visit(ast::And& node) override {
-        // node.getLeft()->accept(*this);
-        // node.getRight()->accept(*this);
-
-        // if (node.getLeft()->getType() == NODE_Bool && node.getRight()->getType() == NODE_Bool) {
-        //     node.setType(NODE_Bool);
-        // } else {
-        //     errorMismatch(node.getLine());
-        // }
-    }
-
-    void visit(ast::Or& node) override {
-        // node.getLeft()->accept(*this);
-        // node.getRight()->accept(*this);
-
-        // if (node.getLeft()->getType() == NODE_Bool && node.getRight()->getType() == NODE_Bool) {
-        //     node.setType(NODE_Bool);
-        // } else {
-        //     errorMismatch(node.getLine());
-        // }
-    }
-
-    void visit(ast::Type& node) override {
-        // Not Needed ?
-    }
-
-    void visit(ast::Cast& node) override {
+    void visit(Cast& node) override { // TODO - When casted, remember to truncate and extend in case needed.
         // node.getExpr()->accept(*this);
 
         // Symbol* expSymbol = nullptr;
@@ -242,13 +268,13 @@ public:
         // }*/
     }
 
-    void visit(ast::ExpList& node) override {
+    void visit(ExpList& node) override {
         // for (auto& expr : node.getExpressions()) {
         //     expr->accept(*this);
         // }
     }
 
-    void visit(ast::Call& node) override {
+    void visit(Call& node) override {
         this->codeBuffer << "call i32 (i8*, ...) @printf(i8* %format_ptr, i32 %counter_val)" << std::endl;
         // // printf("Get Symbol in %s\n", "Visit Call");
         // Symbol* func = symbolTable.getSymbol(node.getFuncId(), node.getLine());
@@ -307,7 +333,7 @@ public:
 
     }
 
-    void visit(ast::Statements& node) override {
+    void visit(Statements& node) override {
         // // beginScope();
         for (auto& statement : node.getStatements()) {
             // if (statement->getType() == NODE_Statements) {
@@ -322,19 +348,19 @@ public:
         // // endScope();
     }
 
-    void visit(ast::Break& node) override {
+    void visit(Break& node) override {
         // if (!(symbolTable.getCurrentScope()->isInLoopScope())) {
         //     errorUnexpectedBreak(node.getLine());
         // }
     }
 
-    void visit(ast::Continue& node) override {
+    void visit(Continue& node) override {
         // if (!(symbolTable.getCurrentScope()->isInLoopScope())) {
         //     errorUnexpectedContinue(node.getLine());
         // }
     }
 
-    void visit(ast::Return& node) override {
+    void visit(Return& node) override {
         // if(nullptr != node.getExpr()) {
         //     node.getExpr()->accept(*this);
         // }
@@ -375,7 +401,7 @@ public:
         // }
     }
 
-    void visit(ast::If& node) override {
+    void visit(If& node) override {
         // beginScope();
         // // beginScope();
         // node.getCondition()->accept(*this);
@@ -406,7 +432,7 @@ public:
         // }
     }
 
-    void visit(ast::While& node) override {
+    void visit(While& node) override {
         // // Condition scope (?)
         // beginScope("", true);
         // node.getCondition()->accept(*this);
@@ -427,65 +453,38 @@ public:
         // endScope();
     }
 
-    void visit(ast::VarDecl& node) override {
-
-        // emit a variable declaration that initialized by a constant var
+    void visit(VarDecl& node) override {
         string currVar = this->codeBuffer.freshVar();
-
         string varID = node.getVarId()->getValueStr();
-        // this->symbolTable->setRegNameSymTable(varID, currVar);
-        // this->codeBuffer << currVar << " = alloca i32, align 4" << std::endl;
-        // FIXME: The following code 'node.getVarInitExp()->getValueInt()' can fail!
-        this->codeBuffer << currVar << " = add i32 " << node.getVarInitExp()->getValueInt() << ", 0" << std::endl;
 
-        // if (node.getVarInitExp()) {
-        //     node.getVarInitExp()->accept(*this);
-
-        //     //cout << "In Visit VarDecl InitExp Type is " <<  << endl;
-        //     if (node.getVarInitExp()->getType() == NODE_ID) {
-        //         //cout << "Out 1" << endl;
-        //         Symbol* expSymbol = symbolTable.getSymbol(node.getVarInitExp()->getValueStr(), node.getVarInitExp()->getLine());
-        //         if (expSymbol == nullptr) {
-        //             //cout << "Out 2" << endl;
-        //             errorUndef(node.getVarInitExp()->getLine(), node.getVarInitExp()->getValueStr());
-        //         } else if (expSymbol->getSymbolType() == FUNCTION) {
-        //             //cout << "Out 3" << endl;
-        //             errorDefAsFunc(node.getLine(), node.getVarInitExp()->getValueStr());
-        //         }
-        //         //cout << "Out 4" << endl;
-        //     }
-        //     //cout << "Out 5" << endl;
-        // }
-
-        // if (symbolTable.getSymbol(node.getValueStr(), node.getLine())) {
-        //     errorDef(node.getLine(), node.getValueStr());
-        // }
-
-        // symbolTable.addVariableSymbol(node.getValueStr(), node.getVarType(), node.getLine());
-        // Symbol* symbol = symbolTable.getSymbol(node.getValueStr(), node.getLine());
-        // if (symbol == nullptr) {
-        //     cout << "In Visit VarDecl symbol returned as nullptr, WTF?!" << endl;
-        // }
-        // printer.emitVar(node.getValueStr(), symbol->getDataType(), symbol->getOffset());
-
-
-        // node.getVarId()->accept(*this);
-        // if(node.getVarInitExp() && node.getVarType() == BuiltInType::BYTE && node.getVarInitExp()->getType() == NODE_Num) {
-        //     errorMismatch(node.getLine());
-        // }
-        // if (node.getVarInitExp()){
-        //     if (!(node.getVarType() == BuiltInType::INT && node.getVarInitExp()->getType() == NODE_NumB)) {
-        //         if ((node.getVarType() == BOOL && node.getVarInitExp()->getType() != NODE_Bool) ||
-        //             (node.getVarType() == STRING && node.getVarInitExp()->getType() != NODE_String) ||
-        //             (node.getVarType() == INT && node.getVarInitExp()->getType() != NODE_Num) ||
-        //             (node.getVarType() == BYTE && node.getVarInitExp()->getType() != NODE_NumB)) {
-        //             errorMismatch(node.getLine());
-        //         }
-        //     }
-        // }
+        // TODO - different types of variables!!
+        if (node.getVarInitExp()) {
+            node.getVarInitExp()->accept(*this);
+            if(node.getVarInitExp()->getRegister() == "0") {
+                currVar = "0";
+            } else {
+                this->codeBuffer << currVar << " = add i32 " << node.getVarInitExp()->getRegister() << ", 0" << std::endl;
+                if (node.getVarType() == BuiltInType::BYTE) {
+                    this->codeBuffer << currVar << " = and i32 " << currVar << ", 255" << std::endl; // In case of initialization with a negative
+                }
+            }
+        } else {
+            // TODO - Check type and the default value for each type is defined in the PDF
+            if (node.getVarType() == BuiltInType::INT) {
+                currVar = "0";
+            } else if (node.getVarType() == BuiltInType::BYTE) {
+                currVar = "0";
+            } else if (node.getVarType() == BuiltInType::BOOL) {
+                this->codeBuffer << currVar << " = add i32 0, 0" << std::endl;
+            }
+        }
+        
+        this->symbolTable.addVariableSymbol(node.getValueStr(), node.getVarType(), node.getLine());
+        this->symbolTable.setRegNameSymTable(varID, currVar);
+        node.getVarId()->accept(*this);
     }
 
-    void visit(ast::Assign& node) override {
+    void visit(Assign& node) override {
         // // printf("Get Symbol in %s\n", "Visit Assign");
         // Symbol* var = symbolTable.getSymbol(node.getValueStr(), node.getLine());
         // if (!var) {
@@ -523,7 +522,7 @@ public:
         // }
     }
 
-    void visit(ast::Formal& node) override {
+    void visit(Formal& node) override {
         // if (symbolTable.getSymbol(node.getFormalId(), node.getLine())) {
         //     errorDef(node.getLine(), node.getFormalId());
         // }
@@ -533,26 +532,27 @@ public:
         // printer.emitVar(node.getFormalId(), node.getFormalType(), symbol->getOffset());
     }
 
-    void visit(ast::Formals& node) override {
+    void visit(Formals& node) override {
         // for (auto& formal : node.getFormals()) {
         //     formal->accept(*this);
         // }
     }
 
-    void visit(ast::FuncDecl& node) override {
+    void visit(FuncDecl& node) override {
         // vector<BuiltInType> paramsTypes = node.getFuncParams()->getFormalsType();
         // vector<string> paramsIds = node.getFuncParams()->getFormalsIds();
 
         
         // printer.emitFunc(node.getFuncId(), node.getFuncReturnType(), paramsTypes);
 
-        // beginScope(node.getFuncId(), false);
+        CodeGenerator_beginScope(node.getFuncId(), false);
+        // TODO - Each Parameter should be added to the scope as was done in HW_3
         // node.getFuncParams()->accept(*this);
         node.getFuncBody()->accept(*this);
-        // endScope();
+        CodeGenerator_endScope();
     }
 
-    void visit(ast::Funcs& node) override {
+    void visit(Funcs& node) override {
         // // The (this) is the ScopePrinter
         this->codeBuffer.emit("declare i32 @printf(i8*, ...)");
         this->codeBuffer.emit("define i32 @main() {");
