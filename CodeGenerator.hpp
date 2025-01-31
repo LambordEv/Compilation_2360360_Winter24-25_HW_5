@@ -231,45 +231,39 @@ public:
         // Not Needed ?
     }
 
-    void visit(Cast& node) override { // TODO - When casted, remember to truncate and extend in case needed.
-        // node.getExpr()->accept(*this);
+    void visit(Cast& node) override {
+        node.getExpr()->accept(*this);
+        string currVar = this->codeBuffer.freshVar();
+        string tmpVar;
 
-        // Symbol* expSymbol = nullptr;
-        // BuiltInType originalType = TYPE_ERROR;
-        // BuiltInType targetType = TYPE_ERROR;
-        // //cout << "exp type is: " << node.getExpr()->getType() << endl;
-        // if (node.getExpr()->getType() == NODE_ID || node.getExpr()->getType() == NODE_Num ||
-        //     node.getExpr()->getType() == NODE_NumB) {
-        //     expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr(), node.getExpr()->getLine());
-        //     if(!expSymbol) {
-        //         originalType = semanticToBuiltInType(node.getExpr()->getType());
-        //         // cout << "In Visit Cast symbol returned as nullptr, WTF?!" << endl;
-        //     }else{
-        //         originalType = expSymbol->getDataType();
-        //     }
-        // }
+        Symbol* expSymbol = nullptr;
+        BuiltInType originalType = TYPE_ERROR;
+        BuiltInType targetType = TYPE_ERROR;
+        if (node.getExpr()->getType() == NODE_ID || node.getExpr()->getType() == NODE_Num ||
+            node.getExpr()->getType() == NODE_NumB) {
+            expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr());
+            tmpVar = (node.getExpr()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getExpr()->getValueStr()) : node.getExpr()->getRegister();
+            if(!expSymbol) {
+                originalType = semanticToBuiltInType(node.getExpr()->getType());
+            }else{
+                originalType = expSymbol->getDataType();
+            }
+        }
 
-        // if (node.getTargetType() == INT
-        //     && (originalType == INT || originalType == BYTE)) {
-        //     targetType = INT;
-        //     node.getExpr()->setType(NODE_Num);
-        //     node.setType(NODE_Num);
-        // } else if (node.getTargetType() == BYTE
-        //     && (originalType == BYTE || originalType == INT)) {
-        //     targetType = BYTE;
-        //     node.getExpr()->setType(NODE_NumB);
-        //     node.setType(NODE_NumB);
-        // } else {
-        //     //cout << "In Visit Cast, targetType is not apropriate - " << node.getTargetType() << endl;
-        //     //cout << "In Visit Cast, originalType is not apropriate - " << originalType << endl;
-        //     errorMismatch(node.getExpr()->getLine());
-        // }
-
-        // //Update the type of the symbol in the symbolTable
-        // /*cout << "aadas" << endl;
-        // if (nullptr != expSymbol) {
-        //     expSymbol->setDataType(targetType);
-        // }*/
+        if (node.getTargetType() == INT
+            && (originalType == INT || originalType == BYTE)) {
+            targetType = INT;
+            node.getExpr()->setType(NODE_Num);
+            node.setType(NODE_Num);
+            this->codeBuffer << currVar << " = add i32 " << tmpVar << ", 0" << std::endl;
+        } else if (node.getTargetType() == BYTE
+            && (originalType == BYTE || originalType == INT)) {
+            targetType = BYTE;
+            node.getExpr()->setType(NODE_NumB);
+            node.setType(NODE_NumB);
+            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl;
+        }
+        node.setRegister(currVar);
     }
 
     void visit(ExpList& node) override {
@@ -491,41 +485,12 @@ public:
     }
 
     void visit(Assign& node) override {
-        // // printf("Get Symbol in %s\n", "Visit Assign");
-        // Symbol* var = symbolTable.getSymbol(node.getValueStr(), node.getLine());
-        // if (!var) {
-        //     errorUndef(node.getLine(), node.getValueStr());
-        // }
-        // if (var->getSymbolType() == FUNCTION) {
-        //     errorDefAsFunc(node.getLine(), node.getValueStr());
-        // }
-        // node.getAssignExp()->accept(*this);
+        string currVar = this->codeBuffer.freshVar();
+        node.getAssignExp()->accept(*this);
+        string expReg = (node.getAssignExp()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getAssignExp()->getValueStr()) : node.getAssignExp()->getRegister();
 
-        // BuiltInType varType = var->getDataType();
-        // BuiltInType expType = BuiltInType::TYPE_ERROR;
-        // if (node.getAssignExp()->getType() == NODE_ID) {
-        //     Symbol* expSymbol = symbolTable.getSymbol(node.getAssignExp()->getValueStr(), node.getAssignExp()->getLine());
-        //     if (expSymbol == nullptr) {
-        //         errorUndef(node.getAssignExp()->getLine(), node.getAssignExp()->getValueStr());
-        //     }
-        //     else if (expSymbol->getSymbolType() == FUNCTION) {
-        //         errorDefAsFunc(node.getAssignExp()->getLine(), node.getAssignExp()->getValueStr());
-        //     }
-        //     expType = expSymbol->getDataType();
-        // } else if (node.getAssignExp()->getType() == NODE_Num) {
-        //     expType = BuiltInType::INT;
-        // } else if (node.getAssignExp()->getType() == NODE_NumB) {
-        //     expType = BuiltInType::BYTE;
-        // } else if (node.getAssignExp()->getType() == NODE_Bool) {
-        //     expType = BuiltInType::BOOL;
-        // } else if (node.getAssignExp()->getType() == NODE_String) {
-        //     expType = BuiltInType::STRING;
-        // }
-
-        // if (varType != expType && (!(varType == BuiltInType::INT && expType == BuiltInType::BYTE) ||
-        //     (varType == BuiltInType::BYTE && expType == BuiltInType::INT))) {
-        //     errorMismatch(node.getAssignIdLine());
-        // }
+        this->codeBuffer << currVar << " = add i32 " << expReg << ", 0" << std::endl;
+        this->symbolTable.setRegNameSymTable(node.getValueStr(), currVar);
     }
 
     void visit(Formal& node) override {
