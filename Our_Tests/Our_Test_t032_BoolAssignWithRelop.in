@@ -1,5 +1,6 @@
 void main() {
     int x = 5;
     int y = 10;
-    bool z = x > y;
+    bool z = false;
+    z = x < y;
 }

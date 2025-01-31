@@ -1,0 +1,6 @@
+void main() {
+    int x = 5 + 7b;
+    int y = 10;
+    bool z = true;
+    z = not (x != y);
+}
