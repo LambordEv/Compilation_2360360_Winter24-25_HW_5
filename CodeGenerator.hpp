@@ -82,8 +82,9 @@ public:
             currVar = "0";
         } else {
             this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << std::endl;
-            this->codeBuffer << currVar << " = and i32 " << currVar << ", 255" << std::endl; // In case of a negative value
-            this->codeBuffer << currVar << " = zext i32 " << currVar << ", 255" << std::endl;
+            string tmpVar = currVar;
+            currVar = this->codeBuffer.freshVar();
+            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl;
         }
         node.setRegister(currVar);
     }
@@ -148,7 +149,9 @@ public:
         
         if (currVar != "0") {
             if(binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable) == BYTE) {
-                resultText += "\n" + currVar + " = and i32 " + currVar + ", 255";
+                string tmpVar = currVar;
+                currVar = this->codeBuffer.freshVar();
+                resultText += "\n" + currVar + " = and i32 " + tmpVar + ", 255";
             }
             this->codeBuffer << resultText << std::endl;
         }
@@ -165,7 +168,8 @@ public:
 
         string currVar = this->codeBuffer.freshVar();
         string resultText = currVar;
-        switch(node.getOp()) {
+        switch(node.getOp()) { 
+            // TODO - Maybe we will have to jump to labels from here, where this code should be written? here or in the if/else and while
             case RelOpType::EQ:
                 resultText += " = icmp eq i32 " + leftReg + ", " + rightReg;
                 break;
@@ -465,7 +469,9 @@ public:
             } else {
                 this->codeBuffer << currVar << " = add i32 " << node.getVarInitExp()->getRegister() << ", 0" << std::endl;
                 if (node.getVarType() == BuiltInType::BYTE) {
-                    this->codeBuffer << currVar << " = and i32 " << currVar << ", 255" << std::endl; // In case of initialization with a negative
+                    string tmpVar = currVar;
+                    currVar = this->codeBuffer.freshVar();
+                    this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl; // In case of initialization with a negative
                 }
             }
         } else {
