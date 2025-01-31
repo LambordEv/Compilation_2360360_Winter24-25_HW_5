@@ -2,5 +2,5 @@ void main() {
     int x = 5;
     int y = 10;
     byte z;
-    z = (byte) (x - y);
+    z = (byte) (x - y); // 251
 }

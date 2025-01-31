@@ -190,6 +190,9 @@ public:
                 break;
         }
         this->codeBuffer << resultText << std::endl;
+        string tmpVar = currVar;
+        currVar = this->codeBuffer.freshVar();
+        this->codeBuffer << currVar << " = zext i1 " << tmpVar << " to i32" << std::endl;
         node.setRegister(currVar);
         node.setType(NODE_Bool);
     }
@@ -203,7 +206,7 @@ public:
         node.setRegister(currVar);
     }
 
-    void visit(And& node) override {
+    void visit(And& node) override { // TODO - Lazy (Short Circuit) Evaluation
         node.getLeft()->accept(*this);
         node.getRight()->accept(*this);
         string currVar = this->codeBuffer.freshVar();
