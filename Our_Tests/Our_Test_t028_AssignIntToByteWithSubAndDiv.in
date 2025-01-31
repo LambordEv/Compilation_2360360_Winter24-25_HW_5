@@ -1,0 +1,5 @@
+void main() {
+    int x = 5;
+    int y = 30 * 100;
+    byte z = (int) ((x - y)/5);
+}

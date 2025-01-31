@@ -1,0 +1,6 @@
+void main() {
+    int x = 5;
+    byte y = 251b;
+    int z;
+    z = (byte) (x + y);
+}
