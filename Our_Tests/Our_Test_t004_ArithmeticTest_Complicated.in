@@ -1,6 +1,6 @@
 void main() {
     int a = 5;
-    int x = a + 2;
-    int t = x + x;
-    int c = x * x / 3 - 2 * a + 7;
+    int x = a + 2; // 7
+    int t = x + x; // 14
+    int c = x * x / 3 - 2 * a + 7; // 13
 }

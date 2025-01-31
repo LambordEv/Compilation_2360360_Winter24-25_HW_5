@@ -1,0 +1,14 @@
+@.intFormat = internal constant [4 x i8] c"%d\0A\00"
+
+define i32 @fn_fib(i32) {
+    // Enter Code Here
+    ret i32 %t12
+}
+
+define i32 @main() {
+    %fib_number = call i32 @fn_fib(i32 6)
+    %ptr = getelementptr [4 x i8], [4 x i8]* @.intFormat, i32 0, i32 0
+    %1 = call i32 (i8*, ...) @printf(i8* %ptr, i32 %fib_number)
+    ret i32 0
+}
+declare i32 @printf(i8*, ...)
