@@ -1,0 +1,6 @@
+void main() {
+    bool do = false;
+    bool dont = true;
+    bool yossi = do and dont; // do is evaluated - dont is not evaluated
+    // Result false
+}

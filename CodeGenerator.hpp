@@ -71,7 +71,7 @@ public:
         if(node.getValueInt() == 0) {
             currVar = "0";
         } else {
-            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << std::endl;
+            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << endl;
         }
         node.setRegister(currVar);
     }
@@ -81,10 +81,10 @@ public:
         if(node.getValueInt() == 0) {
             currVar = "0";
         } else {
-            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << std::endl;
+            this->codeBuffer << currVar << " = add i32 " << node.getValueInt() << ", 0" << endl;
             string tmpVar = currVar;
             currVar = this->codeBuffer.freshVar();
-            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl;
+            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << endl;
         }
         node.setRegister(currVar);
     }
@@ -96,7 +96,7 @@ public:
     void visit(Bool& node) override {
         string currVar = this->codeBuffer.freshVar();
         int initBoolValue = node.getValueBool() ? 1 : 0;
-        this->codeBuffer << currVar << " = add i32 " << initBoolValue << ", 0" << std::endl;
+        this->codeBuffer << currVar << " = add i32 " << initBoolValue << ", 0" << endl;
         node.setRegister(currVar);
     }
 
@@ -153,7 +153,7 @@ public:
                 currVar = this->codeBuffer.freshVar();
                 resultText += "\n" + currVar + " = and i32 " + tmpVar + ", 255";
             }
-            this->codeBuffer << resultText << std::endl;
+            this->codeBuffer << resultText << endl;
         }
 
         node.setRegister(currVar);
@@ -189,10 +189,10 @@ public:
                 resultText += " = icmp sge i32 " + leftReg + ", " + rightReg;
                 break;
         }
-        this->codeBuffer << resultText << std::endl;
+        this->codeBuffer << resultText << endl;
         string tmpVar = currVar;
         currVar = this->codeBuffer.freshVar();
-        this->codeBuffer << currVar << " = zext i1 " << tmpVar << " to i32" << std::endl;
+        this->codeBuffer << currVar << " = zext i1 " << tmpVar << " to i32" << endl;
         node.setRegister(currVar);
         node.setType(NODE_Bool);
     }
@@ -202,32 +202,132 @@ public:
         string currVar = this->codeBuffer.freshVar();
         
         string expReg = (node.getExpr()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getExpr()->getValueStr()) : node.getExpr()->getRegister();
-        this->codeBuffer << currVar << " = xor i32 " << expReg << ", 1" << std::endl;
+        this->codeBuffer << currVar << " = xor i32 " << expReg << ", 1" << endl;
         node.setRegister(currVar);
     }
 
-    void visit(And& node) override { // TODO - Lazy (Short Circuit) Evaluation
-        node.getLeft()->accept(*this);
-        node.getRight()->accept(*this);
+    void visit(And& node) override { 
+        // Lazy Evaluation - If Left is False, then Right is not evaluated
+        const string andLabel = this->codeBuffer.freshLabel();
+        // Flow Control Labels
+        const string rightEvaluateLabel = andLabel + ".rightEvaluationSection";
+        const string resultLabel = andLabel + ".resultSection";
+        // Memory Allocation Labels
+        const string leftOperand = "%allocation_" + andLabel.substr(1) + ".leftOperand";
+        const string rightOperand = "%allocation_" + andLabel.substr(1) + ".rightOperand";
+
+        string leftReg = "0";
+        string rightReg = "0";
         string currVar = this->codeBuffer.freshVar();
 
-        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
-        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+        // Prepare left and right values
+        this->codeBuffer << leftOperand << " = alloca i1" << endl;
+        this->codeBuffer << "store i1 0, i1* " << leftOperand << endl;
+        this->codeBuffer << rightOperand << " = alloca i1" << endl;
+        this->codeBuffer << "store i1 0, i1* " << rightOperand << endl;
 
-        this->codeBuffer << currVar << " = and i32 " << leftReg << ", " << rightReg << std::endl;
+        // Evaluate Left
+        node.getLeft()->accept(*this);
+        leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        
+        // Convert to i1 - The branch instruction requires i1 type
+        string tmpVar = leftReg;
+        leftReg = this->codeBuffer.freshVar();
+        this->codeBuffer << leftReg << " = trunc i32 " << tmpVar << " to i1" << endl;
+        this->codeBuffer << "store i1 " << leftReg << ", i1* " << leftOperand << endl;
+        
+        // If Left is False, then Right is not evaluated
+        this->codeBuffer << "br i1 " << leftReg << ", label " << rightEvaluateLabel << ", label " << resultLabel << endl;
+
+        // Evaluate Right
+        this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
+        node.getRight()->accept(*this);
+        rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        // Convert to i1 - The branch instruction requires i1 type
+        tmpVar = rightReg;
+        rightReg = this->codeBuffer.freshVar();
+        this->codeBuffer << rightReg << " = trunc i32 " << tmpVar << " to i1" << endl;
+        this->codeBuffer << "store i1 " << rightReg << ", i1* " << rightOperand << endl;
+
+        this->codeBuffer << "br label " << resultLabel << endl;
+        this->codeBuffer << "\n" << resultLabel.substr(1) << ":" << endl;
+
+        // Evaluate And
+        string leftOperandResult = this->codeBuffer.freshVar();
+        string rightOperandResult = this->codeBuffer.freshVar();
+        this->codeBuffer << leftOperandResult << " = load i1, i1* " << leftOperand << endl;
+        this->codeBuffer << rightOperandResult << " = load i1, i1* " << rightOperand << endl;
+        this->codeBuffer << currVar << " = and i1 " << leftOperandResult << ", " << rightOperandResult << endl;
+
+        // Return to i32 type
+        tmpVar = currVar;
+        currVar = this->codeBuffer.freshVar();
+        this->codeBuffer << currVar << " = zext i1 " << tmpVar << " to i32" << endl;
         node.setRegister(currVar);
     }
 
     void visit(Or& node) override {
-        node.getLeft()->accept(*this);
-        node.getRight()->accept(*this);
+        // Lazy Evaluation - If Left is True, then Right is not evaluated
+        const string orLabel = this->codeBuffer.freshLabel();
+        // Flow Control Labels
+        const string rightEvaluateLabel = orLabel + ".rightEvaluationSection";
+        const string resultLabel = orLabel + ".resultSection";
+        // Memory Allocation Labels
+        const string leftOperand = "%allocation_" + orLabel.substr(1) + ".leftOperand";
+        const string rightOperand = "%allocation_" + orLabel.substr(1) + ".rightOperand";
+
+        string leftReg = "0";
+        string rightReg = "0";
         string currVar = this->codeBuffer.freshVar();
 
-        string leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
-        string rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+        // Prepare left and right values
+        this->codeBuffer << leftOperand << " = alloca i1" << endl;
+        this->codeBuffer << "store i1 0, i1* " << leftOperand << endl;
+        this->codeBuffer << rightOperand << " = alloca i1" << endl;
+        this->codeBuffer << "store i1 0, i1* " << rightOperand << endl;
 
-        this->codeBuffer << currVar << " = or i32 " << leftReg << ", " << rightReg << std::endl;
+        // Evaluate Left
+        node.getLeft()->accept(*this);
+        leftReg = (node.getLeft()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getLeft()->getValueStr()) : node.getLeft()->getRegister();
+        
+        // Convert to i1 - The branch instruction requires i1 type
+        string tmpVar = leftReg;
+        leftReg = this->codeBuffer.freshVar();
+        this->codeBuffer << leftReg << " = trunc i32 " << tmpVar << " to i1" << endl;
+        this->codeBuffer << "store i1 " << leftReg << ", i1* " << leftOperand << endl;
+        
+        // If Left is True, then Right is not evaluated
+        this->codeBuffer << "br i1 " << leftReg << ", label " << resultLabel << ", label " << rightEvaluateLabel << endl;
+
+        // Evaluate Right
+        this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
+        node.getRight()->accept(*this);
+        rightReg = (node.getRight()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getRight()->getValueStr()) : node.getRight()->getRegister();
+
+        // Convert to i1 - The branch instruction requires i1 type
+        tmpVar = rightReg;
+        rightReg = this->codeBuffer.freshVar();
+        this->codeBuffer << rightReg << " = trunc i32 " << tmpVar << " to i1" << endl;
+        this->codeBuffer << "store i1 " << rightReg << ", i1* " << rightOperand << endl;
+
+        this->codeBuffer << "br label " << resultLabel << endl;
+        this->codeBuffer << "\n" << resultLabel.substr(1) << ":" << endl;
+
+        // Evaluate Or
+        string leftOperandResult = this->codeBuffer.freshVar();
+        string rightOperandResult = this->codeBuffer.freshVar();
+        this->codeBuffer << leftOperandResult << " = load i1, i1* " << leftOperand << endl;
+        this->codeBuffer << rightOperandResult << " = load i1, i1* " << rightOperand << endl;
+        this->codeBuffer << currVar << " = or i1 " << leftOperandResult << ", " << rightOperandResult << endl;
+
+        // Return to i32 type
+        tmpVar = currVar;
+        currVar = this->codeBuffer.freshVar();
+        this->codeBuffer << currVar << " = zext i1 " << tmpVar << " to i32" << endl;
         node.setRegister(currVar);
+
+        // We need to de-allocate the allocated memory (?)
     }
 
     void visit(Type& node) override {
@@ -258,13 +358,13 @@ public:
             targetType = INT;
             node.getExpr()->setType(NODE_Num);
             node.setType(NODE_Num);
-            this->codeBuffer << currVar << " = add i32 " << tmpVar << ", 0" << std::endl;
+            this->codeBuffer << currVar << " = add i32 " << tmpVar << ", 0" << endl;
         } else if (node.getTargetType() == BYTE
             && (originalType == BYTE || originalType == INT)) {
             targetType = BYTE;
             node.getExpr()->setType(NODE_NumB);
             node.setType(NODE_NumB);
-            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl;
+            this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << endl;
         }
         node.setRegister(currVar);
     }
@@ -276,7 +376,7 @@ public:
     }
 
     void visit(Call& node) override {
-        this->codeBuffer << "call i32 (i8*, ...) @printf(i8* %format_ptr, i32 %counter_val)" << std::endl;
+        this->codeBuffer << "call i32 (i8*, ...) @printf(i8* %format_ptr, i32 %counter_val)" << endl;
         // // printf("Get Symbol in %s\n", "Visit Call");
         // Symbol* func = symbolTable.getSymbol(node.getFuncId(), node.getLine());
         // if (func && func->getSymbolType() != FUNCTION) {
@@ -464,11 +564,11 @@ public:
             if(node.getVarInitExp()->getRegister() == "0") {
                 currVar = "0";
             } else {
-                this->codeBuffer << currVar << " = add i32 " << node.getVarInitExp()->getRegister() << ", 0" << std::endl;
+                this->codeBuffer << currVar << " = add i32 " << node.getVarInitExp()->getRegister() << ", 0" << endl;
                 if (node.getVarType() == BuiltInType::BYTE) {
                     string tmpVar = currVar;
                     currVar = this->codeBuffer.freshVar();
-                    this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << std::endl; // In case of initialization with a negative
+                    this->codeBuffer << currVar << " = and i32 " << tmpVar << ", 255" << endl; // In case of initialization with a negative
                 }
             }
         } else {
@@ -478,7 +578,7 @@ public:
             } else if (node.getVarType() == BuiltInType::BYTE) {
                 currVar = "0";
             } else if (node.getVarType() == BuiltInType::BOOL) {
-                this->codeBuffer << currVar << " = add i32 0, 0" << std::endl;
+                this->codeBuffer << currVar << " = add i32 0, 0" << endl;
             }
         }
         
@@ -492,7 +592,7 @@ public:
         node.getAssignExp()->accept(*this);
         string expReg = (node.getAssignExp()->getType() == NODE_ID) ? this->symbolTable.getRegNameSymTable(node.getAssignExp()->getValueStr()) : node.getAssignExp()->getRegister();
 
-        this->codeBuffer << currVar << " = add i32 " << expReg << ", 0" << std::endl;
+        this->codeBuffer << currVar << " = add i32 " << expReg << ", 0" << endl;
         this->symbolTable.setRegNameSymTable(node.getValueStr(), currVar);
     }
 

@@ -1,0 +1,3 @@
+void main() {
+    bool yossi = true and false; // false is evaluated - Result false
+}

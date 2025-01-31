@@ -1,0 +1,6 @@
+void main() {
+    bool do1 = true;
+    bool do2 = true;
+    bool yossi = do1 and do2; // do1 is evaluated - do2 is evaluated
+    // Result true
+}
