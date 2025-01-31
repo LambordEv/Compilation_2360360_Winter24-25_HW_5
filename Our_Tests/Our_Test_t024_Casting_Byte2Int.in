@@ -1,0 +1,4 @@
+void main() {
+    byte x = 100b;
+    int b = (int)x;
+}

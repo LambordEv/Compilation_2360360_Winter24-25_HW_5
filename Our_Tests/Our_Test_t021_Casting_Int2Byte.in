@@ -1,0 +1,4 @@
+void main() {
+    int x = 500;
+    byte b = (byte)x;
+}
