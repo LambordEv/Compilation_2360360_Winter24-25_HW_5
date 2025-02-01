@@ -117,7 +117,11 @@ public:
     }
 
     void visit(String& node) override {
-        this->codeBuffer.emitString(node.getText());
+        const int strSize = node.getValueStr().size() + 1;
+        const string strIdentifier = this->codeBuffer.emitString(node.getValueStr());
+        RegisterStruct currVar{this->codeBuffer.freshVar(), false};
+        this->codeBuffer << tabs << currVar.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << strIdentifier << ", i32 0, i32 0" << endl;
+        node.setRegister(currVar);
     }
 
     void visit(Bool& node) override {
@@ -188,10 +192,8 @@ public:
                 break;
             case BinOpType::DIV:
                 if (rightValue.isZero) {
-                    // TODO - cAall errorDivByZero
-                    // TODO - call exit
-                    cout << "Division by zero" << endl;
-                    exit(0);
+                    this->codeBuffer << tabs << "call void print(\"Division by zero\\n\")" << endl;
+                    this->codeBuffer << tabs << "call void exit(0)" << endl;
                 } else {
                     resultText += " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
                 }
@@ -480,26 +482,40 @@ public:
     void visit(Call& node) override {
         node.getArgsExp()->accept(*this);
 
-        string callBuffer = "call ";
-        string funcID = node.getFuncId();
-        BuiltInType returnType = symbolTable.getSymbol(funcID)->getDataType();
+        RegisterStruct regNew = {this->codeBuffer.freshVar(), true};
+        string callBuffer = "";
+        const string funcID = node.getFuncId();
+
+        BuiltInType returnType = symbolTable.getFuncSymbol(funcID)->getDataType();
         if (returnType == VOID) {
-            callBuffer += "void ";
+            callBuffer = "call void ";
         } else {
-            callBuffer += "i32 ";
+            callBuffer = regNew.name + " = call i32 ";
         }
+        node.setRegister(regNew);
         callBuffer += "@" + funcID + "(";
 
         vector<shared_ptr<Exp>> params = node.getArgs();
         for(auto param : params) {
+            RegisterStruct regParam;
             if (param->getType() == NODE_ID) {
-                RegisterStruct regParam = symbolTable.getRegFromSymTable(param->getValueStr());
+                regParam = symbolTable.getRegFromSymTable(param->getValueStr());
                 string tempReg = this->codeBuffer.freshVar();
                 this->codeBuffer << tabs << tempReg << " = load i32, i32* " << regParam.name << endl;
-                callBuffer += "i32 " + tempReg + ", ";
+                if (funcID == "print" || funcID == "printf") {
+                    callBuffer += "i8* " + tempReg + ", ";
+                } else {
+                    callBuffer += "i32 " + tempReg + ", ";
+                }
             } else {
-                callBuffer += "i32 " + param->getRegister().name + ", ";
+                regParam = param->getRegister();
+                if (funcID == "print" || funcID == "printf") {
+                    callBuffer += "i8* " + regParam.name + ", ";
+                } else {
+                    callBuffer += "i32 " + regParam.name + ", ";
+                }
             }
+
         }
         callBuffer = ((params.size() != 0) ? callBuffer.substr(0, callBuffer.size() - 2) : callBuffer) + ")";
         
@@ -539,9 +555,9 @@ public:
             this->codeBuffer << tabs << "ret void" << endl;
         } else {
             node.getExpr()->accept(*this);
-            RegisterStruct retReg = node.getExpr()->getRegister();
-            string tempReg = this->codeBuffer.freshVar();
             if (node.getExpr()->getType() == NODE_ID) {
+                RegisterStruct retReg = this->symbolTable.getRegFromSymTable(node.getExpr()->getValueStr());
+                string tempReg = this->codeBuffer.freshVar();
                 codeBuffer << tabs << tempReg << " = load i32, i32* " << retReg.name << endl;
                 this->codeBuffer << tabs << "ret i32 " << tempReg << endl;
             } else {
@@ -715,7 +731,9 @@ public:
         RegisterStruct newParam = {this->codeBuffer.freshVar(), false};
         newParam.setRegisterValue(false);
 
-        this->codeBuffer << tabs << newParam.name << " = alloca i32";
+        // Get the parameters offset 
+        this->codeBuffer << tabs << newParam.name << " = alloca i32" << endl;
+        this->codeBuffer << tabs << "store i32 %" << (0 - symbol->getOffset() - 1) << ", i32* " << newParam.name << endl;
         symbolTable.setRegInSymTable(node.getFormalId(), newParam);
     }
 
@@ -730,7 +748,7 @@ public:
         
         string funcPrototype = "define ";
         funcPrototype += (VOID == node.getFuncReturnType()) ? "void " : "i32 ";
-        funcPrototype += node.getFuncId() + " (";
+        funcPrototype += "@" + node.getFuncId() + " (";
         for(auto param : paramsTypes) funcPrototype += "i32, ";
         funcPrototype = ((paramsTypes.size() != 0) ? funcPrototype.substr(0, funcPrototype.size() - 2) : funcPrototype) + ") {";
         
@@ -739,15 +757,32 @@ public:
         // TODO - Each Parameter should be added to the scope as was done in HW_3
         node.getFuncParams()->accept(*this);
         node.getFuncBody()->accept(*this);
+        if (VOID == node.getFuncReturnType()) {
+            this->codeBuffer << tabs << "ret void" << endl;
+        } else {
+            this->codeBuffer << tabs << "ret i32 0" << endl;
+        }
         CodeGenerator_endScope();
-        this->codeBuffer << tabs << "}";
+        this->codeBuffer << tabs << "}\n\n";
     }
 
     void visit(Funcs& node) override {
         // // The (this) is the ScopePrinter
+        this->symbolTable.addFunctionSymbol("print", BuiltInType::VOID, {BuiltInType::STRING}, {"str"}, -1);
+        this->symbolTable.addFunctionSymbol("printi", BuiltInType::VOID, {BuiltInType::INT}, {"num"}, -1);
+        //this->symbolTable.addFunctionSymbol("printf", BuiltInType::INT, {BuiltInType::INT}, {"num"}, -1);
+        this->symbolTable.addFunctionSymbol("exit", BuiltInType::VOID, {BuiltInType::INT}, {"code"}, -1);
+
         this->codeBuffer.emit("declare i32 @printf(i8*, ...)");
+        this->codeBuffer.emit("declare void @exit(i32)");
         this->codeBuffer.emit(PRINTI_Function);
         this->codeBuffer.emit(PRINT_Function);
+        for (auto& funcDecl : node.getFuncs()) {
+            this->symbolTable.addFunctionSymbol(funcDecl->getFuncId(), funcDecl->getFuncReturnType(), funcDecl->getFuncParams()->getFormalsType(), 
+                funcDecl->getFuncParams()->getFormalsIds(), funcDecl->getFuncIdLine());
+        }
+        Symbol* main = symbolTable.getFuncSymbol("main");
+      
         for(auto& funcDecl : node.getFuncs()) {
             funcDecl->accept(*this);
         }
