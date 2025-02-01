@@ -1,0 +1,11 @@
+void main() {
+    int x = 2;
+    bool y = true;
+    while(x < 5) {
+        if(y) {
+            x = x + 1;
+            continue;
+        }
+        break;
+    }
+}

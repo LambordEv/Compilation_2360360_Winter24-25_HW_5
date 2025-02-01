@@ -72,8 +72,22 @@ public:
     //     : symbolTable(symbolTable) {}
     CodeGenerator() : codeBuffer(), symbolTable() {}
 
-    void CodeGenerator_beginScope(string scopeName = "", bool isLoopScope = false) {
-        symbolTable.beginScope(isLoopScope, scopeName);
+    void CodeGenerator_beginScope(string scopeName = "", bool isLoopScope = false, string condition_Label = "", string done_Label = "") {
+        if (!isLoopScope && symbolTable.getCurrentScope()->isInLoopScope()) {
+            string conditionLabelPrev = symbolTable.getCurrentScope()->getConditionLabel();
+            string doneLabelPrev = symbolTable.getCurrentScope()->getDoneLabel();
+            symbolTable.beginScope(true, scopeName);
+            symbolTable.getCurrentScope()->setConditionLabel(conditionLabelPrev);
+            symbolTable.getCurrentScope()->setDoneLabel(doneLabelPrev);
+        }
+        else if (isLoopScope) {
+            symbolTable.beginScope(isLoopScope, scopeName);
+            symbolTable.getCurrentScope()->setConditionLabel(condition_Label);
+            symbolTable.getCurrentScope()->setDoneLabel(done_Label);
+        }
+        else {
+            symbolTable.beginScope(false, scopeName);
+        }
         tabs += "\t";
     }
 
@@ -522,30 +536,31 @@ public:
     }
 
     void visit(Statements& node) override {
-        // // beginScope();
         for (auto& statement : node.getStatements()) {
-            // if (statement->getType() == NODE_Statements) {
-            //     beginScope();
-            // }
+            if (statement->getType() == NODE_Statements) {
+                CodeGenerator_beginScope();
+            }
             statement->accept(*this);
-            // cout << "Current Statement Type: " << statement->getType() << endl;
-            // if (statement->getType() == NODE_Statements) {
-            //     endScope();
-            // }
+            if (statement->getType() == NODE_Statements) {
+                CodeGenerator_endScope();
+            }
         }
-        // // endScope();
     }
 
     void visit(Break& node) override {
-        // if (!(symbolTable.getCurrentScope()->isInLoopScope())) {
-        //     errorUnexpectedBreak(node.getLine());
-        // }
+        if ((symbolTable.getCurrentScope()->isInLoopScope())) {
+            const string done_label = this->symbolTable.getCurrentScope()->getDoneLabel();
+            //cout << "Break Label: " << done_label << endl;
+            this->codeBuffer << tabs << "br label " << done_label << endl;
+        }
     }
 
     void visit(Continue& node) override {
-        // if (!(symbolTable.getCurrentScope()->isInLoopScope())) {
-        //     errorUnexpectedContinue(node.getLine());
-        // }
+        if ((symbolTable.getCurrentScope()->isInLoopScope())) {
+            const string condition_Label = this->symbolTable.getCurrentScope()->getConditionLabel();
+            //cout << "Continue Label: " << condition_Label << endl;
+            this->codeBuffer << tabs << "br label " << condition_Label << endl;
+        }
     }
 
     void visit(Return& node) override {
@@ -600,8 +615,10 @@ public:
         RegisterStruct conditionReg{this->codeBuffer.freshVar(), true};
         node.getCondition()->accept(*this);
         if(NODE_ID == node.getCondition()->getType()){
+            RegisterStruct condIdReg{this->codeBuffer.freshVar(), true};
             RegisterStruct tmpReg = this->symbolTable.getRegFromSymTable(node.getCondition()->getValueStr());
-            this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << tmpReg.name << " to i1" << endl;
+            this->codeBuffer << tabs << condIdReg.name << " = load i32, i32* " << tmpReg.name << endl;
+            this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << condIdReg.name << " to i1" << endl;
             conditionReg.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         } else {
             RegisterStruct tmpReg = node.getCondition()->getRegister();
@@ -634,10 +651,51 @@ public:
             }
             CodeGenerator_endScope();
         }
+        this->codeBuffer << tabs << "br label " << done_Label << endl;
         this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
     }
 
     void visit(While& node) override {
+        const string while_label = this->codeBuffer.freshLabel();
+        // Flow Control Labels
+        const string condition_Label = while_label + ".while_condition";
+        const string body_Label = while_label + ".while_body";
+        const string done_Label = while_label + ".while_finale";
+        CodeGenerator_beginScope();
+        this->symbolTable.getCurrentScope()->setInLoopScope(true);
+        this->symbolTable.getCurrentScope()->setConditionLabel(condition_Label);
+        this->symbolTable.getCurrentScope()->setDoneLabel(done_Label);
+
+        this->codeBuffer << tabs << "br label " << condition_Label << endl;
+        this->codeBuffer << "\n" << condition_Label.substr(1) << ":" << endl;  
+        RegisterStruct conditionReg{this->codeBuffer.freshVar(), true};
+        node.getCondition()->accept(*this);
+        if(NODE_ID == node.getCondition()->getType()){
+            RegisterStruct condIdReg{this->codeBuffer.freshVar(), true};
+            RegisterStruct tmpReg = this->symbolTable.getRegFromSymTable(node.getCondition()->getValueStr());
+            this->codeBuffer << tabs << condIdReg.name << " = load i32, i32* " << tmpReg.name << endl;
+            this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << condIdReg.name << " to i1" << endl;
+            conditionReg.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
+        } else {
+            RegisterStruct tmpReg = node.getCondition()->getRegister();
+            this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << tmpReg.name << " to i1" << endl;
+            conditionReg.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
+        }
+        this->codeBuffer << tabs << "br i1 " << conditionReg.name << ", label " << body_Label << ", label " << done_Label << endl;
+        this->codeBuffer << "\n" << body_Label.substr(1) << ":" << endl;
+
+        if (node.getBody()->getType() == NODE_Statements) {
+            CodeGenerator_beginScope();
+        }
+        node.getBody()->accept(*this);
+        this->codeBuffer << tabs << "br label " << condition_Label << endl;
+        this->codeBuffer << tabs << "br label " << done_Label << endl;
+        if (node.getBody()->getType() == NODE_Statements) {
+            CodeGenerator_endScope();
+        }
+        this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
+        CodeGenerator_endScope();
+
         // // Condition scope (?)
         // beginScope("", true);
         // node.getCondition()->accept(*this);

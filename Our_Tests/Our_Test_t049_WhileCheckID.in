@@ -1,0 +1,10 @@
+void main() {
+    bool x = true;
+    int y = 10;
+    while(x) {
+        if(y == 3) {
+            x = false;
+        }
+        y = y - 1; 
+    }
+}

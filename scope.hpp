@@ -6,8 +6,11 @@
 #include <unordered_map>
 #include <memory>
 #include <stdexcept>
+#include <iostream>
 using namespace ast;
 using namespace output;
+using namespace std;
+
 
 /*const char* symbolTypeToString(SymbolType type) {
     switch (type) {
@@ -50,6 +53,7 @@ void printSymbolTable(const std::unordered_map<std::string, Symbol>& symbolTable
 }*/
 
 
+
 class Scope {
 private:
     Scope* parent = nullptr;
@@ -58,6 +62,9 @@ private:
     int nextParamOffset = -1;
     bool inLoopScope = false;
     std::string scopeName = "";
+    std::string conditionLabel = "";
+    std::string doneLabel = "";
+    
 
 public:
     Scope(Scope* parent, bool isLoopScope = false, std::string scopeName = "") : parent(parent), scopeName(scopeName), inLoopScope(isLoopScope) {
@@ -126,6 +133,28 @@ public:
 
     bool isInLoopScope() const {
         return inLoopScope;
+    }
+
+    void setInLoopScope(bool isLoopScope) {
+        inLoopScope = isLoopScope;
+    }
+
+    void setConditionLabel(const std::string& conditionLabel) {
+        this->conditionLabel = conditionLabel;
+    }
+
+    std::string getConditionLabel() const {
+        //cout << "Getting condition label: " << conditionLabel << endl;
+        return conditionLabel;
+    }
+
+    void setDoneLabel(const std::string& doneLabel) {
+        this->doneLabel = doneLabel;
+    }
+
+    std::string getDoneLabel() const {
+        //cout << "Getting done label: " << doneLabel << endl;
+        return doneLabel;
     }
 
     const std::unordered_map<std::string, Symbol>& getSymbolTable() const {

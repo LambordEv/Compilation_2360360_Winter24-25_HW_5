@@ -1,0 +1,6 @@
+void main() {
+    int x = 7;
+    while(x > 4) {
+        x = x - 1;
+    }
+}

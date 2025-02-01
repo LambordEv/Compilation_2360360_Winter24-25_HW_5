@@ -2,13 +2,48 @@
 declare i32 @printf(i8*, ...)
 
 define i32 @fn_fib(i32, i32) {
-    ; Enter your code here
-    ; then in the next 2 lines you shall change the 
-    ; loading and/or the return value to receive 
-    ; what you expecting
+%t0 = alloca i32
+        %t2 = add i32 2, 0
+        %t1 = add i32 %t2, 0
+        store i32 %t1, i32* %t0
+        %t3 = alloca i32
+        %t5 = add i32 1, 0
+        %t4 = add i32 %t5, 0
+        store i32 %t4, i32* %t3
+                br label %label_0.while_condition
 
-    %3 = load i32, i32* %t3
-    ret i32 %3
+label_0.while_condition:
+                %t7 = add i32 5, 0
+                %t8 = load i32, i32* %t0
+                %t9 = icmp slt i32 %t8, %t7
+                %t10 = zext i1 %t9 to i32
+                %t6 = trunc i32 %t10 to i1
+                br i1 %t6, label %label_0.while_body, label %label_0.while_finale
+
+label_0.while_body:
+                                %t12 = load i32, i32* %t3
+                                %t11 = trunc i32 %t12 to i1
+                                br i1 %t11, label %label_1.then, label %label_1.else
+
+label_1.then:
+                                        %t14 = add i32 1, 0
+                                        %t15 = load i32, i32* %t0
+                                        %t16 = add i32 %t15, %t14
+                                        store i32 %t16, i32* %t0
+                                        br label %label_0.while_condition
+                                        br label %label_1.finale
+
+label_1.else:
+                        br label %label_1.finale
+
+label_1.finale:
+                        br label %label_0.while_finale
+                        br label %label_0.while_condition
+                        br label %label_0.while_finale
+
+label_0.while_finale:
+    %6 = load i32, i32* %t0
+    ret i32 %6
 }
 
 define i32 @main() {
