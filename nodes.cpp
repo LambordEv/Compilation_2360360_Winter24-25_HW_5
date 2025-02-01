@@ -8,16 +8,16 @@ extern char *yytext;
 
 using namespace ast;
 
-static bool checkTypesForRelOp(SemanticNodeType left, SemanticNodeType right) {
-        // printf("left: %d, right: %d\n", left, right);
-        if ((left == NODE_NumB && right == NODE_NumB) ||
-            (left == NODE_Num && right == NODE_Num) ||
-            (left == NODE_NumB && right == NODE_Num) ||
-            (left == NODE_Num && right == NODE_NumB)) {
-                return true;
-        }
-        return false;
-}
+// static bool checkTypesForRelOp(SemanticNodeType left, SemanticNodeType right) {
+//         // printf("left: %d, right: %d\n", left, right);
+//         if ((left == NODE_NumB && right == NODE_NumB) ||
+//             (left == NODE_Num && right == NODE_Num) ||
+//             (left == NODE_NumB && right == NODE_Num) ||
+//             (left == NODE_Num && right == NODE_NumB)) {
+//                 return true;
+//         }
+//         return false;
+// }
 
 namespace ast {
 

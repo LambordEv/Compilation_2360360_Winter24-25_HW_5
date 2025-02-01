@@ -23,11 +23,6 @@ enum BuiltInType {
     STRING
 }; */
 
-// typedef struct RegisterStruct {
-//     string name;
-//     BuiltInType type;
-// } RegisterStruct;
-
 class Symbol {
 
 private:
@@ -37,22 +32,22 @@ BuiltInType dataType;                  // Data type (e.g., INT, BYTE, BOOL, etc.
 int offset;                         // Memory offset (for variables or parameters)
 vector<BuiltInType> parameterTypes; // Function parameter types
 vector<string> parameterNames; // Function parameter names
-string regName;
+RegisterStruct symbolRegister;
 
 public:
     // Default constructor
     Symbol()
-        : name(""), symbolType(SymbolType::VARIABLE), dataType(BuiltInType::TYPE_ERROR), offset(0), regName("") {}
+        : name(""), symbolType(SymbolType::VARIABLE), dataType(BuiltInType::TYPE_ERROR), offset(0), symbolRegister{"0", false} {}
 
     // Constructor for variables
     Symbol(const string& name, SymbolType symbolType, BuiltInType dataType, int offset)
-        : name(name), symbolType(symbolType), dataType(dataType), offset(offset), regName("") {}
+        : name(name), symbolType(symbolType), dataType(dataType), offset(offset), symbolRegister{"0", false} {}
 
     // Constructor for functions
     Symbol(const string& name, SymbolType symbolType, BuiltInType dataType,
            const vector<BuiltInType>& paramTypes, const vector<string>& paramNames)
         : name(name), symbolType(symbolType), dataType(dataType),
-          offset(0), parameterTypes(paramTypes), parameterNames(paramNames), regName("") {}
+          offset(0), parameterTypes(paramTypes), parameterNames(paramNames), symbolRegister{"0", false} {}
 
     // Getters
     const string& getName() const { return name; }
@@ -62,8 +57,15 @@ public:
     int getOffset() const { return offset; }
     const vector<BuiltInType>& getParameterTypes() const { return parameterTypes; }
     const vector<string>& getParameterNames() const { return parameterNames; }
-    void setRegName(const string& reg) { regName = reg; }
-    string getRegName() const { return regName; }
+
+    RegisterStruct getRegister(void) { return symbolRegister; }
+    void setRegister(const RegisterStruct& regToSet) { symbolRegister = regToSet; }
+
+    void setRegName(const string& reg) { symbolRegister.name = reg; }
+    string getRegName() const { return symbolRegister.name; }
+    void setRegZeroState(bool isZero) { symbolRegister.isZero = isZero; }
+    bool isRegZero(void) { return symbolRegister.isZero; }
+    
 
 };
 

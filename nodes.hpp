@@ -9,6 +9,22 @@
 using namespace std;
 namespace ast {
 
+    typedef struct {
+        string name = "Undef";
+        bool isZero = true;
+        int registerValue = 0;
+        bool isRegisterValueKnown = true;
+
+        void setRegisterValue(bool isKnownValue, int newValue = 0) {
+            if(isKnownValue) {
+                registerValue = newValue;
+            }
+            isRegisterValueKnown = isKnownValue;
+            isZero = isRegisterValueKnown && (0 == registerValue);
+        }
+        int getRegisterValue(void) { return registerValue; }
+    } RegisterStruct;
+
     enum SemanticNodeType {
         NODE_Undecided      = -1,
         NODE_Exp            = 0,
@@ -92,14 +108,14 @@ namespace ast {
 
     /* Base class for all expressions */
     class Exp : virtual public Node {
-        string storingRegister = "";
+        RegisterStruct storingRegister{"Undef", false};
     public:
         Exp() = default;
         virtual int getValueInt() const { return 0; }
         virtual string getValueStr() const { return ""; }
         virtual bool getValueBool() const { return false; }
-        virtual string getRegister() const { return storingRegister; }
-        virtual void setRegister(string reg) { storingRegister = reg;}
+        virtual RegisterStruct getRegister() const { return this->storingRegister; }
+        virtual void setRegister(const RegisterStruct& reg) { this->storingRegister = reg;}
     };
 
     /* Base class for all statements */

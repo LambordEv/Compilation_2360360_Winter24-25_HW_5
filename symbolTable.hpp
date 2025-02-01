@@ -9,8 +9,8 @@ using namespace ast;
 #include <unordered_map>
 #include <string>
 #include <stack>
-#include <iostream>  // For std::cout
-#include <algorithm> // For std::reverse
+#include <iostream>  // For cout
+#include <algorithm> // For reverse
 using namespace output;
 using namespace std;
 
@@ -20,7 +20,7 @@ using namespace std;
 class SymbolTable {
 private:
     Scope* globalScope; // Global scope for functions and global variables
-    std::stack<Scope*> scopeStack; // Stack to manage nested scopes
+    stack<Scope*> scopeStack; // Stack to manage nested scopes
 
 public:
     SymbolTable() {
@@ -38,31 +38,31 @@ public:
         }
     }
 
-    void addVariableSymbol(const std::string& name, BuiltInType dataType, int lineno) {
+    void addVariableSymbol(const string& name, BuiltInType dataType, int lineno) {
         getCurrentScope()->addVariableSymbol(name, dataType, lineno);
     }
 
-    void addParameterSymbol(const std::string& name, BuiltInType dataType, int lineno) {
+    void addParameterSymbol(const string& name, BuiltInType dataType, int lineno) {
         getCurrentScope()->addParameterSymbol(name, dataType, lineno);
     }
 
-    void addFunctionSymbol(const std::string& name, BuiltInType returnType,
-                           const std::vector<BuiltInType>& paramTypes,
-                           const std::vector<std::string>& paramNames, int lineno) {
+    void addFunctionSymbol(const string& name, BuiltInType returnType,
+                           const vector<BuiltInType>& paramTypes,
+                           const vector<string>& paramNames, int lineno) {
         globalScope->addFunctionSymbol(name, returnType, paramTypes, paramNames, lineno);
     }
 
-    Symbol* getSymbol(const std::string &name) {
+    Symbol* getSymbol(const string &name) {
         Symbol* symbol = getCurrentScope()->getSymbolName(name);
         return symbol;
     }
 
-    Symbol* getFuncSymbol(const std::string &name) {
+    Symbol* getFuncSymbol(const string &name) {
         Symbol* symbol = globalScope->getSymbolName(name);
         return symbol;
     }
 
-    Scope* beginScope(bool isLoopScope = false, std::string scopeName = "") {
+    Scope* beginScope(bool isLoopScope = false, string scopeName = "") {
         Scope* newScope = new Scope(scopeStack.top(), isLoopScope, scopeName);
         scopeStack.push(newScope);
 
@@ -75,7 +75,7 @@ public:
             scopeStack.pop();
             delete currentScope;
         } else {
-            throw std::runtime_error("Cannot end the last scope");
+            throw runtime_error("Cannot end the last scope");
         }
     }
 
@@ -83,18 +83,18 @@ public:
         return scopeStack.top();
     }
 
-    void setRegNameSymTable(const std::string& name, const std::string& reg) { 
-        this->getCurrentScope()->getSymbolName(name)->setRegName(reg);
+    void setRegInSymTable(const string& name, const RegisterStruct& reg) {
+        this->getCurrentScope()->getSymbolName(name)->setRegister(reg);
     }
 
-    std::string getRegNameSymTable(const string& name) { 
-        string result = this->getCurrentScope()->getSymbolName(name)->getRegName();
-        return result;
+    RegisterStruct getRegFromSymTable(const string& name) { 
+        RegisterStruct resultReg = this->getCurrentScope()->getSymbolName(name)->getRegister();
+        return resultReg;
     }
 
     void printSymbolTable() const {
-        std::stack<Scope*> tempStack(scopeStack);
-        std::vector<Scope*> scopes;
+        stack<Scope*> tempStack(scopeStack);
+        vector<Scope*> scopes;
 
         // Collect scopes in order
         while (!tempStack.empty()) {
@@ -103,28 +103,28 @@ public:
         }
 
         // Reverse to start with the global scope
-        std::reverse(scopes.begin(), scopes.end());
+        reverse(scopes.begin(), scopes.end());
 
-        std::cout << "Symbol Table:\n";
+        cout << "Symbol Table:\n";
         for (size_t i = 0; i < scopes.size(); ++i) {
-            std::cout << "Scope " << i << (i == 0 ? " (Global)" : "") << ":\n";
+            cout << "Scope " << i << (i == 0 ? " (Global)" : "") << ":\n";
             const auto& symbols = scopes[i]->getSymbolTable();
             for (const auto& entry : symbols) {
                 const Symbol& symbol = entry.second;
-                std::cout << "  Name: " << symbol.getName()
+                cout << "  Name: " << symbol.getName()
                           << ", Type: " << (symbol.getSymbolType() == SymbolType::VARIABLE ? "Variable" : "Function")
                           << ", Data Type: " << static_cast<int>(symbol.getDataType())
                           << ", Offset: " << symbol.getOffset();
                 if (symbol.getSymbolType() == SymbolType::FUNCTION) {
-                    std::cout << ", Parameters: ";
+                    cout << ", Parameters: ";
                     const auto& paramTypes = symbol.getParameterTypes();
                     const auto& paramNames = symbol.getParameterNames();
                     for (size_t j = 0; j < paramNames.size(); ++j) {
-                        std::cout << "(" << paramNames[j] << ": " << static_cast<int>(paramTypes[j]) << ")";
-                        if (j < paramNames.size() - 1) std::cout << ", ";
+                        cout << "(" << paramNames[j] << ": " << static_cast<int>(paramTypes[j]) << ")";
+                        if (j < paramNames.size() - 1) cout << ", ";
                     }
                 }
-                std::cout << '\n';
+                cout << '\n';
             }
         }
     }
