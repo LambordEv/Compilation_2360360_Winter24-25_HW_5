@@ -471,68 +471,39 @@ public:
     }
 
     void visit(ExpList& node) override {
-        // for (auto& expr : node.getExpressions()) {
-        //     expr->accept(*this);
-        // }
+        // TO DO - Check if need to updated implementation
+        for (auto& expr : node.getExpressions()) {
+            expr->accept(*this);
+        }
     }
 
     void visit(Call& node) override {
-        this->codeBuffer << tabs << "call i32 (i8*, ...) @printf(i8* %format_ptr, i32 %counter_val)" << endl;
-        // // printf("Get Symbol in %s\n", "Visit Call");
-        // Symbol* func = symbolTable.getSymbol(node.getFuncId(), node.getLine());
-        // if (func && func->getSymbolType() != FUNCTION) {
-        //     errorDefAsVar(node.getLine(), node.getFuncId());
-        // }
-        // if (!func) {
-        //     errorUndefFunc(node.getLine(), node.getFuncId());
-        // }
+        node.getArgsExp()->accept(*this);
 
-        // node.setType(builtInToNodeType(func->getDataType())); 
-        // node.getArgsExp()->accept(*this);
+        string callBuffer = "call ";
+        string funcID = node.getFuncId();
+        BuiltInType returnType = symbolTable.getSymbol(funcID)->getDataType();
+        if (returnType == VOID) {
+            callBuffer += "void ";
+        } else {
+            callBuffer += "i32 ";
+        }
+        callBuffer += "@" + funcID + "(";
 
-        // vector<BuiltInType> paramsTypesInSymbolTable = func->getParameterTypes();
-        // vector<shared_ptr<Exp>> paramsInFunc = node.getArgs();
-
-        // vector<BuiltInType> types;
-        // for(auto& exp : paramsInFunc) {
-        //     if (exp->getType() == NODE_ID) {
-        //         Symbol* expSymbol = symbolTable.getSymbol(exp->getValueStr(), exp->getLine());
-        //         if (expSymbol == nullptr) {
-        //             errorUndef(exp->getLine(), exp->getValueStr());
-        //         }
-        //         types.push_back(expSymbol->getDataType());
-        //     } else if (exp->getType() == NODE_Num) {
-        //         // cout << "Num type is not supported in function calls" << endl;
-        //         types.push_back(BuiltInType::INT);
-        //     } else if (exp->getType() == NODE_NumB) {
-        //         types.push_back(BuiltInType::BYTE);
-        //     } else if (exp->getType() == NODE_Bool) {
-        //         types.push_back(BuiltInType::BOOL);
-        //     } else if (exp->getType() == NODE_String) {
-        //         // cout << "String type is not supported in function calls" << endl;
-        //         types.push_back(BuiltInType::STRING);
-        //     } else {
-        //         types.push_back(BuiltInType::TYPE_ERROR);
-        //     }
-        // }
-
-        // // in error which vector should be passed as argument????????????????????
-        // vector<string> typesStr = convertVectorToStrings(types);
-        // vector<string> paramsTypesInSymbolTableStr = convertVectorToStrings(paramsTypesInSymbolTable);
-        // if (paramsTypesInSymbolTable.size() != types.size()) {
-        //     errorPrototypeMismatch(node.getLine(), node.getFuncId(), paramsTypesInSymbolTableStr);
-        // }
-        // for (size_t i = 0; i < paramsTypesInSymbolTable.size(); i++) {
-        //     if (paramsTypesInSymbolTable[i] != types[i]) {
-        //         if((paramsTypesInSymbolTable[i] == BuiltInType::INT && types[i] == BuiltInType::BYTE)) {
-        //             continue;
-        //         }
-        //         errorPrototypeMismatch(node.getLine(), node.getFuncId(), paramsTypesInSymbolTableStr);
-        //     }
-        // }
-
-        // node.setType(builtInToNodeType(func->getDataType())); 
-
+        vector<shared_ptr<Exp>> params = node.getArgs();
+        for(auto param : params) {
+            if (param->getType() == NODE_ID) {
+                RegisterStruct regParam = symbolTable.getRegFromSymTable(param->getValueStr());
+                string tempReg = this->codeBuffer.freshVar();
+                this->codeBuffer << tabs << tempReg << " = load i32, i32* " << regParam.name << endl;
+                callBuffer += "i32 " + tempReg + ", ";
+            } else {
+                callBuffer += "i32 " + param->getRegister().name + ", ";
+            }
+        }
+        callBuffer = ((params.size() != 0) ? callBuffer.substr(0, callBuffer.size() - 2) : callBuffer) + ")";
+        
+        this->codeBuffer << tabs << callBuffer << endl;
     }
 
     void visit(Statements& node) override {
@@ -564,44 +535,21 @@ public:
     }
 
     void visit(Return& node) override {
-        // if(nullptr != node.getExpr()) {
-        //     node.getExpr()->accept(*this);
-        // }
-
-        // string funcName = symbolTable.getCurrentScope()->getScopeName();
-        // Symbol* func = symbolTable.getSymbol(funcName, node.getLine());
-        // if(func == nullptr) {
-        //     errorUndefFunc(node.getLine(), funcName);
-        // }
-        // BuiltInType funcRetType = func->getDataType();
-        
-        // BuiltInType expType = BuiltInType::TYPE_ERROR;
-        // if(node.getExpr() == nullptr) {
-        //     // cout << "Expresion is null" << endl;
-        //     expType = BuiltInType::VOID;
-        // } 
-        // else {
-        //     // cout << "Expresion is not null --- Its type is " << node.getExpr()->getType() << endl;
-        //     if (node.getExpr()->getType() == NODE_ID) {
-        //         Symbol* expSymbol = symbolTable.getSymbol(node.getExpr()->getValueStr(), node.getExpr()->getLine());
-        //         if (expSymbol == nullptr) {
-        //             errorUndef(node.getLine(), node.getExpr()->getValueStr());
-        //         }
-        //         expType = expSymbol->getDataType();
-        //     } else if (node.getExpr()->getType() == NODE_Num) {
-        //         expType = BuiltInType::INT;
-        //     } else if (node.getExpr()->getType() == NODE_NumB) {
-        //         expType = BuiltInType::BYTE;
-        //     } else if (node.getExpr()->getType() == NODE_Bool) {
-        //         expType = BuiltInType::BOOL;
-        //     }
-        // }
-
-        // if (funcRetType != expType && !(funcRetType == BuiltInType::INT && expType == BuiltInType::BYTE)) {
-        //     // cout << "funcRetType: " << funcRetType << " expType: " << expType << endl;
-           
-        //     errorMismatch(node.getLine());
-        // }
+        if (!node.getExpr()) {
+            this->codeBuffer << tabs << "ret void" << endl;
+        } else {
+            node.getExpr()->accept(*this);
+            RegisterStruct retReg = node.getExpr()->getRegister();
+            string tempReg = this->codeBuffer.freshVar();
+            if (node.getExpr()->getType() == NODE_ID) {
+                codeBuffer << tabs << tempReg << " = load i32, i32* " << retReg.name << endl;
+                this->codeBuffer << tabs << "ret i32 " << tempReg << endl;
+            } else {
+                RegisterStruct retReg = node.getExpr()->getRegister();
+                this->codeBuffer << tabs << "ret i32 " << retReg.name << endl;
+            }
+        }
+      
     }
 
     void visit(If& node) override {
@@ -695,25 +643,6 @@ public:
         }
         this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
         CodeGenerator_endScope();
-
-        // // Condition scope (?)
-        // beginScope("", true);
-        // node.getCondition()->accept(*this);
-        // if (node.getCondition()->getType() != NODE_Bool) {
-        //     errorMismatch(node.getCondition()->getLine());
-        // }
-        // // Body scope (?)
-        // if (node.getBody()->getType() == NODE_Statements) {
-        //     beginScope("", true);
-        // }
-        // node.getBody()->accept(*this);
-        // if (node.getBody()->getType() == NODE_Statements) {
-        //     endScope();
-        // }
-        
-        // // cout << "In Visit While Condition Exists " << node.getCondition()->getType() << endl;
-        // // cout << "In Visit While Body Exists " << node.getBody()->getType() << endl;
-        // endScope();
     }
 
     void visit(VarDecl& node) override {
