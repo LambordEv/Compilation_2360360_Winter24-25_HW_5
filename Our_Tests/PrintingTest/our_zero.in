@@ -1,0 +1,9 @@
+void main() {
+        int a = 1;
+        while(false) {
+                a = a - 1;
+        }
+        
+        int x = 1 / a;
+        printi(x);
+}

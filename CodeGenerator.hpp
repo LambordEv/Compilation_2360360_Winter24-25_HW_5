@@ -9,6 +9,8 @@
 #include <vector>
 #include <iostream>
 
+
+
 const string PRINTI_Function = "@.int_specifier = constant [4 x i8] c\"%d\\0A\\00\" \n\
 define void @printi(i32) { \n\
     %spec_ptr = getelementptr [4 x i8], [4 x i8]* @.int_specifier, i32 0, i32 0 \n\
@@ -122,6 +124,7 @@ public:
         RegisterStruct currVar{this->codeBuffer.freshVar(), false};
         this->codeBuffer << tabs << currVar.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << strIdentifier << ", i32 0, i32 0" << endl;
         node.setRegister(currVar);
+        node.setType(NODE_String);
     }
 
     void visit(Bool& node) override {
@@ -192,20 +195,28 @@ public:
                 break;
             case BinOpType::DIV:
                 if (rightValue.isZero) {
-                    this->codeBuffer << tabs << "call void print(\"Division by zero\\n\")" << endl;
-                    this->codeBuffer << tabs << "call void exit(0)" << endl;
+                    const string divisionByZero = "Error division by zero";
+                    const string divZeroIdentifier = this->codeBuffer.emitString(divisionByZero);
+                    const int strSize = divisionByZero.size() + 1;
+                    RegisterStruct currVar{this->codeBuffer.freshVar(), false};
+                    this->codeBuffer << tabs << currVar.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << divZeroIdentifier << ", i32 0, i32 0" << endl;
+
+                    this->codeBuffer << tabs << "call void @print(i8* " + currVar.name + ")" << endl;
+                    this->codeBuffer << tabs << "call void @exit(i32 0)" << endl;
+                    //FXIME - Check why the fucking exit is still executing commands after it!
+                    resultText += " = sdiv i32 1, 1 ; This is done since exit is not called in some fucking unexplained reason";
+
                 } else {
                     resultText += " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
+                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() / rightValue.getRegisterValue());
                 }
-                currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() / rightValue.getRegisterValue());
                 if((leftValue.isZero && !rightValue.isZero)){
                     currVar.setRegisterValue(true, 0);
                 }
                 break;
         }
-        
+        this->codeBuffer << tabs << resultText << endl;
         if (!currVar.isZero) {
-            this->codeBuffer << tabs << resultText << endl;
             if(binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable) == BYTE) {
                 RegisterStruct tmpVar = currVar;
                 currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
@@ -721,6 +732,9 @@ public:
         }
         currVar.isZero = expReg.isZero;
         currVar.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
+        // cout << node.getValueStr() << " = " << currVar.getRegisterValue() << endl;
+        // cout << node.getValueStr() << " = " << currVar.isZero << endl;
+        // cout << node.getValueStr() << " = " << expReg.isRegisterValueKnown << endl;
         this->symbolTable.setRegInSymTable(node.getValueStr(), currVar);
     }
 
@@ -777,6 +791,7 @@ public:
         this->codeBuffer.emit("declare void @exit(i32)");
         this->codeBuffer.emit(PRINTI_Function);
         this->codeBuffer.emit(PRINT_Function);
+
         for (auto& funcDecl : node.getFuncs()) {
             this->symbolTable.addFunctionSymbol(funcDecl->getFuncId(), funcDecl->getFuncReturnType(), funcDecl->getFuncParams()->getFormalsType(), 
                 funcDecl->getFuncParams()->getFormalsIds(), funcDecl->getFuncIdLine());
