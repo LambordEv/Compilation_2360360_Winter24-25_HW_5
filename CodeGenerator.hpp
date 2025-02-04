@@ -109,12 +109,12 @@ public:
 
     void visit(NumB& node) override {
         RegisterStruct currVar{this->codeBuffer.freshVar(), 0 == node.getValueInt()};
-        currVar.setRegisterValue(true, node.getValueInt());
 
         this->codeBuffer << tabs << currVar.name << " = add i32 " << node.getValueInt() << ", 0" << endl;
         RegisterStruct tmpVar = currVar;
         currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
         this->codeBuffer << tabs << currVar.name << " = and i32 " << tmpVar.name << ", 255" << endl;
+        currVar.setRegisterValue(true, node.getValueInt() & 255);
         node.setRegister(currVar);
     }
 
@@ -157,7 +157,7 @@ public:
             this->codeBuffer << tabs << leftValue.name << " = load i32, i32* " << leftReg.name << endl;
             leftValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getLeft()->getRegister()
+            RegisterStruct tmpReg = node.getLeft()->getRegister();
             leftValue.name = tmpReg.name;
             leftValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
@@ -167,7 +167,7 @@ public:
             this->codeBuffer << tabs << rightValue.name << " = load i32, i32* " << rightReg.name << endl;
             rightValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getRight()->getRegister()
+            RegisterStruct tmpReg = node.getRight()->getRegister();
             rightValue.name = tmpReg.name;
             rightValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }        
@@ -178,10 +178,11 @@ public:
             case BinOpType::ADD:
                 // if left in numb and right is numb then truncate, else already written 
                 resultText += " = add i32 " + leftValue.name + ", " + rightValue.name;
-                if((leftValue.isZero && rightValue.isZero)){
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) && (rightValue.isRegisterValueKnown && rightValue.isZero))){
                     currVar.setRegisterValue(true, 0);
                 } else {
-                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() + rightValue.getRegisterValue());
+                    int opretaionResult = leftValue.getRegisterValue() + rightValue.getRegisterValue();
+                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), opretaionResult);
                 }
                 break;
             case BinOpType::SUB:
@@ -194,42 +195,49 @@ public:
                 break;
             case BinOpType::MUL:
                 resultText += " = mul i32 " + leftValue.name + ", " + rightValue.name;
-                if((leftValue.isZero || rightValue.isZero)){
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) || (rightValue.isRegisterValueKnown && rightValue.isZero))){
                     currVar.setRegisterValue(true, 0);
                 } else {
                     currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() * rightValue.getRegisterValue());
                 }
                 break;
             case BinOpType::DIV:
-                if (rightValue.isZero) {
-                    const string divisionByZero = "Error division by zero";
-                    const string divZeroIdentifier = this->codeBuffer.emitString(divisionByZero);
-                    const int strSize = divisionByZero.size() + 1;
-                    RegisterStruct currVar{this->codeBuffer.freshVar(), false};
-                    this->codeBuffer << tabs << currVar.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << divZeroIdentifier << ", i32 0, i32 0" << endl;
-                    // Execute Division By Zero Error
-                    this->codeBuffer << tabs << "call void @print(i8* " + currVar.name + ")" << endl;
-                    this->codeBuffer << tabs << "call void @exit(i32 0)" << endl;
-                    //FXIME - Check why the fucking exit is still executing commands after it!
-                    resultText += " = sdiv i32 1, 1 ; This is done since exit is not called in some fucking unexplained reason";
-                } else {
-                    resultText += " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
-                    if((leftValue.isZero && !rightValue.isZero)){
-                        currVar.setRegisterValue(true, 0);
-                    } else {
-                        currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() / rightValue.getRegisterValue());
-                    }
+                const string divZero_labelPrefix = this->codeBuffer.freshLabel();
+                const string divZero_label = divZero_labelPrefix + ".divByZero";
+                const string legalDiv_label = divZero_labelPrefix + ".divNotZero";
+                RegisterStruct divCheckReg{this->codeBuffer.freshVar(), true};
+                this->codeBuffer << tabs << divCheckReg.name << " = icmp eq i32 " << rightValue.name << ", 0" << endl;
+                this->codeBuffer << tabs << "br i1 " << divCheckReg.name << ", label " << divZero_label << ", label " << legalDiv_label << endl;
+                
+                // Division By Zero Error
+                this->codeBuffer << divZero_label.substr(1) << ":" << endl;
+                const string divisionByZero = "Error division by zero";
+                const string divZeroIdentifier = this->codeBuffer.emitString(divisionByZero);
+                const int strSize = divisionByZero.size() + 1;
+                RegisterStruct divZeroErrStr{this->codeBuffer.freshVar(), false};
+                this->codeBuffer << tabs << divZeroErrStr.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << divZeroIdentifier << ", i32 0, i32 0" << endl;
+                // Execute Division By Zero Error
+                this->codeBuffer << tabs << "call void @print(i8* " + divZeroErrStr.name + ")" << endl;
+                this->codeBuffer << tabs << "call void @exit(i32 0)" << endl;
+                //FXIME - Check why the fucking exit is still executing commands after it!
+                resultText = currVar.name + " = sdiv i32 1, 1 ; This is done since exit is not called in some fucking unexplained reason";
+                this->codeBuffer << tabs << "br label " << legalDiv_label << endl;
+
+                // Standard Division
+                this->codeBuffer << legalDiv_label.substr(1) << ":" << endl;
+                resultText = currVar.name + " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) && (rightValue.isRegisterValueKnown && !rightValue.isZero))){
+                    currVar.setRegisterValue(true, 0);
                 }
                 break;
         }
         this->codeBuffer << tabs << resultText << endl;
-        if (!currVar.isZero) {
-            if(BYTE == binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable)) {
-                RegisterStruct tmpVar = currVar;
-                currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
-                this->codeBuffer << tabs << currVar.name + " = and i32 " + tmpVar.name + ", 255" << endl;
-                currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue() & 255);
-            }
+
+        if(BYTE == binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable)) {
+            RegisterStruct tmpVar = currVar;
+            currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
+            this->codeBuffer << tabs << currVar.name + " = and i32 " + tmpVar.name + ", 255" << endl;
+            currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue() & 255);
         }
 
         node.setRegister(currVar);
@@ -250,7 +258,7 @@ public:
             this->codeBuffer << tabs << leftValue.name << " = load i32, i32* " << leftReg.name << endl;
             leftValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getLeft()->getRegister()
+            RegisterStruct tmpReg = node.getLeft()->getRegister();
             leftValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
             leftValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
@@ -260,7 +268,7 @@ public:
             this->codeBuffer << tabs << rightValue.name << " = load i32, i32* " << rightReg.name << endl;
             rightValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getRight()->getRegister()
+            RegisterStruct tmpReg = node.getRight()->getRegister();
             rightValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
             rightValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
@@ -316,7 +324,7 @@ public:
             this->codeBuffer << tabs << expBoolValue.name << " = load i32, i32* " << expReg.name << endl;
             expBoolValue.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getExpr()->getRegister()
+            RegisterStruct tmpReg = node.getExpr()->getRegister();
             expBoolValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
             expBoolValue.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
         }
@@ -342,11 +350,6 @@ public:
         RegisterStruct leftBoolValue;
         RegisterStruct rightBoolValue;
 
-        // Result Variables
-        RegisterStruct currVar{this->codeBuffer.freshVar(), true};
-        RegisterStruct leftOperandResult{this->codeBuffer.freshVar(), true};
-        RegisterStruct rightOperandResult{this->codeBuffer.freshVar(), true};
-
         // Prepare left and right values
         this->codeBuffer << tabs << leftOperand_ptr << " = alloca i1" << endl;
         this->codeBuffer << tabs << "store i1 0, i1* " << leftOperand_ptr << endl;
@@ -359,92 +362,68 @@ public:
             leftReg = this->symbolTable.getRegFromSymTable(node.getLeft()->getValueStr());
             leftBoolValue = {this->codeBuffer.freshVar(), true};
             this->codeBuffer << tabs << leftBoolValue.name << " = load i32, i32* " << leftReg.name << endl;
-            leftBoolValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getLeft()->getRegister()
-            leftBoolValue.name = tmpReg.name;
-            leftBoolValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
+            leftBoolValue = node.getLeft()->getRegister();
         }
         
         // Convert to i1 - The branch instruction requires i1 type
         RegisterStruct tmpVar = leftBoolValue;
-        tmpVar.setRegisterValue(leftBoolValue.isRegisterValueKnown, leftBoolValue.getRegisterValue());
         leftBoolValue = {this->codeBuffer.freshVar(), true};
         this->codeBuffer << tabs << leftBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
         this->codeBuffer << tabs << "store i1 " << leftBoolValue.name << ", i1* " << leftOperand_ptr << endl;
-        leftBoolValue.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
+        
+        // If Left is False, then Right is not evaluated
+        this->codeBuffer << tabs << "br i1 " << leftBoolValue.name << ", label " << rightEvaluateLabel << ", label " << resultLabel << endl;
 
-        // If Left is A CERTAIN FALSE value IN COMPILATION TIME than don't produce right operand LLVM code
-        if(leftBoolValue.isRegisterValueKnown && leftBoolValue.isZero) {
-            this->codeBuffer << tabs << "br label " << resultLabel << endl;
-
-            // Evaluate And
-            this->codeBuffer << tabs << currVar.name << " = and i1 0, 0" << endl;
-            currVar.setRegisterValue(true, 0);
-        } else {
-            // If Left is False, then Right is not evaluated
-            this->codeBuffer << tabs << "br i1 " << leftBoolValue.name << ", label " << rightEvaluateLabel << ", label " << resultLabel << endl;
-
-            // Evaluate Right
-            this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
-            node.getRight()->accept(*this);
-            if(node.getRight()->getType() == NODE_ID) {
-                rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
-                rightBoolValue = {this->codeBuffer.freshVar(), true};
-                this->codeBuffer << tabs << rightBoolValue.name << " = load i32, i32* " << rightReg.name << endl;
-                rightBoolValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
-            } else {
-                RegisterStruct tmpReg = node.getRight()->getRegister()
-                rightBoolValue.name = tmpReg.name;
-                rightBoolValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
-            }
-
-            // Convert to i1 - The branch instruction requires i1 type
-            tmpVar = rightBoolValue;
-            tmpVar.setRegisterValue(rightBoolValue.isRegisterValueKnown, rightBoolValue.getRegisterValue());
+        // Evaluate Right
+        this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
+        node.getRight()->accept(*this);
+        if(node.getRight()->getType() == NODE_ID) {
+            rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
             rightBoolValue = {this->codeBuffer.freshVar(), true};
-            this->codeBuffer << tabs << rightBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
-            this->codeBuffer << tabs << "store i1 " << rightBoolValue.name << ", i1* " << rightOperand_ptr << endl;
-            rightBoolValue.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
-
-            // Evaluate And
-            this->codeBuffer << tabs << leftOperandResult.name << " = load i1, i1* " << leftOperand_ptr << endl;
-            this->codeBuffer << tabs << rightOperandResult.name << " = load i1, i1* " << rightOperand_ptr << endl;
-            this->codeBuffer << tabs << currVar.name << " = and i1 " << leftOperandResult.name << ", " << rightOperandResult.name << endl;
-            currVar.setRegisterValue(leftBoolValue.isRegisterValueKnown && rightBoolValue.isRegisterValueKnown, leftBoolValue.getRegisterValue() & rightBoolValue.getRegisterValue());
-
-            this->codeBuffer << tabs << "br label " << resultLabel << endl;
+            this->codeBuffer << tabs << rightBoolValue.name << " = load i32, i32* " << rightReg.name << endl;
+        } else {
+            rightBoolValue = node.getRight()->getRegister();
         }
+
+        // Convert to i1 - The branch instruction requires i1 type
+        tmpVar = rightBoolValue;
+        rightBoolValue = {this->codeBuffer.freshVar(), true};
+        this->codeBuffer << tabs << rightBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
+        this->codeBuffer << tabs << "store i1 " << rightBoolValue.name << ", i1* " << rightOperand_ptr << endl;
+
+        this->codeBuffer << tabs << "br label " << resultLabel << endl;
         this->codeBuffer << "\n" << resultLabel.substr(1) << ":" << endl;
+
+        // Evaluate And
+        RegisterStruct currVar{this->codeBuffer.freshVar(), true};
+        RegisterStruct leftOperandResult{this->codeBuffer.freshVar(), true};
+        RegisterStruct rightOperandResult{this->codeBuffer.freshVar(), true};
+        this->codeBuffer << tabs << leftOperandResult.name << " = load i1, i1* " << leftOperand_ptr << endl;
+        this->codeBuffer << tabs << rightOperandResult.name << " = load i1, i1* " << rightOperand_ptr << endl;
+        this->codeBuffer << tabs << currVar.name << " = and i1 " << leftOperandResult.name << ", " << rightOperandResult.name << endl;
 
         // Return to i32 type
         tmpVar = currVar;
-        tmpVar.setRegisterValue(currVar.isRegisterValueKnown, currVar.getRegisterValue());
         currVar = {this->codeBuffer.freshVar(), true};
         this->codeBuffer << tabs << currVar.name << " = zext i1 " << tmpVar.name << " to i32" << endl;
-        currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
         node.setRegister(currVar);
     }
 
     void visit(Or& node) override {
-        // Lazy Evaluation - If Left is False, then Right is not evaluated
-        const string andLabel = this->codeBuffer.freshLabel();
+        // Lazy Evaluation - If Left is True, then Right is not evaluated
+        const string orLabel = this->codeBuffer.freshLabel();
         // Flow Control Labels
-        const string rightEvaluateLabel = andLabel + ".rightEvaluationSection";
-        const string resultLabel = andLabel + ".resultSection";
+        const string rightEvaluateLabel = orLabel + ".rightEvaluationSection";
+        const string resultLabel = orLabel + ".resultSection";
         // Memory Allocation Labels
-        const string leftOperand_ptr = "%allocation_" + andLabel.substr(1) + ".leftOperand";
-        const string rightOperand_ptr = "%allocation_" + andLabel.substr(1) + ".rightOperand";
+        const string leftOperand_ptr = "%allocation_" + orLabel.substr(1) + ".leftOperand";
+        const string rightOperand_ptr = "%allocation_" + orLabel.substr(1) + ".rightOperand";
 
-        RegisterStruct leftReg = {"Undef", true};
-        RegisterStruct rightReg = {"Undef", true};
+        RegisterStruct leftReg{"Undef", true};
+        RegisterStruct rightReg{"Undef", true};
         RegisterStruct leftBoolValue;
         RegisterStruct rightBoolValue;
-
-        // Result Variables
-        RegisterStruct currVar{this->codeBuffer.freshVar(), true};
-        RegisterStruct leftOperandResult{this->codeBuffer.freshVar(), true};
-        RegisterStruct rightOperandResult{this->codeBuffer.freshVar(), true};
 
         // Prepare left and right values
         this->codeBuffer << tabs << leftOperand_ptr << " = alloca i1" << endl;
@@ -458,70 +437,51 @@ public:
             leftReg = this->symbolTable.getRegFromSymTable(node.getLeft()->getValueStr());
             leftBoolValue = {this->codeBuffer.freshVar(), true};
             this->codeBuffer << tabs << leftBoolValue.name << " = load i32, i32* " << leftReg.name << endl;
-            leftBoolValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            RegisterStruct tmpReg = node.getLeft()->getRegister()
-            leftBoolValue.name = tmpReg.name;
-            leftBoolValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
+            leftBoolValue = node.getLeft()->getRegister();
         }
         
         // Convert to i1 - The branch instruction requires i1 type
         RegisterStruct tmpVar = leftBoolValue;
-        tmpVar.setRegisterValue(leftBoolValue.isRegisterValueKnown, leftBoolValue.getRegisterValue());
         leftBoolValue = {this->codeBuffer.freshVar(), true};
         this->codeBuffer << tabs << leftBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
         this->codeBuffer << tabs << "store i1 " << leftBoolValue.name << ", i1* " << leftOperand_ptr << endl;
-        leftBoolValue.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
+        
+        // If Left is True, then Right is not evaluated
+        this->codeBuffer << tabs << "br i1 " << leftBoolValue.name << ", label " << resultLabel << ", label " << rightEvaluateLabel << endl;
 
-        // If Left is A CERTAIN TRUE value IN COMPILATION TIME than don't produce right operand LLVM code
-        if(leftBoolValue.isRegisterValueKnown && !leftBoolValue.isZero) {
-            this->codeBuffer << tabs << "br label " << resultLabel << endl;
-
-            // Evaluate And
-            this->codeBuffer << tabs << currVar.name << " = or i1 1, 1" << endl;
-            currVar.setRegisterValue(true, 1);
-        } else {
-            // If Left is False, then Right is not evaluated
-            this->codeBuffer << tabs << "br i1 " << leftBoolValue.name << ", label " << rightEvaluateLabel << ", label " << resultLabel << endl;
-
-            // Evaluate Right
-            this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
-            node.getRight()->accept(*this);
-            if(node.getRight()->getType() == NODE_ID) {
-                rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
-                rightBoolValue = {this->codeBuffer.freshVar(), true};
-                this->codeBuffer << tabs << rightBoolValue.name << " = load i32, i32* " << rightReg.name << endl;
-                rightBoolValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
-            } else {
-                RegisterStruct tmpReg = node.getRight()->getRegister()
-                rightBoolValue.name = tmpReg.name;
-                rightBoolValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
-            }
-
-            // Convert to i1 - The branch instruction requires i1 type
-            tmpVar = rightBoolValue;
-            tmpVar.setRegisterValue(rightBoolValue.isRegisterValueKnown, rightBoolValue.getRegisterValue());
+        // Evaluate Right
+        this->codeBuffer << "\n" << rightEvaluateLabel.substr(1) << ":" << endl;
+        node.getRight()->accept(*this);
+        if(node.getRight()->getType() == NODE_ID) {
+            rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
             rightBoolValue = {this->codeBuffer.freshVar(), true};
-            this->codeBuffer << tabs << rightBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
-            this->codeBuffer << tabs << "store i1 " << rightBoolValue.name << ", i1* " << rightOperand_ptr << endl;
-            rightBoolValue.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
-
-            // Evaluate Or
-            this->codeBuffer << tabs << leftOperandResult.name << " = load i1, i1* " << leftOperand_ptr << endl;
-            this->codeBuffer << tabs << rightOperandResult.name << " = load i1, i1* " << rightOperand_ptr << endl;
-            this->codeBuffer << tabs << currVar.name << " = or i1 " << leftOperandResult.name << ", " << rightOperandResult.name << endl;
-            currVar.setRegisterValue(leftBoolValue.isRegisterValueKnown && rightBoolValue.isRegisterValueKnown, leftBoolValue.getRegisterValue() | rightBoolValue.getRegisterValue());
-
-            this->codeBuffer << tabs << "br label " << resultLabel << endl;
+            this->codeBuffer << tabs << rightBoolValue.name << " = load i32, i32* " << rightReg.name << endl;
+        } else {
+            rightBoolValue = node.getRight()->getRegister();
         }
+
+        // Convert to i1 - The branch instruction requires i1 type
+        tmpVar = rightBoolValue;
+        rightBoolValue = {this->codeBuffer.freshVar(), true};
+        this->codeBuffer << tabs << rightBoolValue.name << " = trunc i32 " << tmpVar.name << " to i1" << endl;
+        this->codeBuffer << tabs << "store i1 " << rightBoolValue.name << ", i1* " << rightOperand_ptr << endl;
+
+        this->codeBuffer << tabs << "br label " << resultLabel << endl;
         this->codeBuffer << "\n" << resultLabel.substr(1) << ":" << endl;
+
+        // Evaluate Or
+        RegisterStruct currVar{this->codeBuffer.freshVar(), true};
+        RegisterStruct leftOperandResult{this->codeBuffer.freshVar(), true};
+        RegisterStruct rightOperandResult{this->codeBuffer.freshVar(), true};
+        this->codeBuffer << tabs << leftOperandResult.name << " = load i1, i1* " << leftOperand_ptr << endl;
+        this->codeBuffer << tabs << rightOperandResult.name << " = load i1, i1* " << rightOperand_ptr << endl;
+        this->codeBuffer << tabs << currVar.name << " = or i1 " << leftOperandResult.name << ", " << rightOperandResult.name << endl;
 
         // Return to i32 type
         tmpVar = currVar;
-        tmpVar.setRegisterValue(currVar.isRegisterValueKnown, currVar.getRegisterValue());
         currVar = {this->codeBuffer.freshVar(), true};
         this->codeBuffer << tabs << currVar.name << " = zext i1 " << tmpVar.name << " to i32" << endl;
-        currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
         node.setRegister(currVar);
     }
 
@@ -673,76 +633,34 @@ public:
             this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << tmpReg.name << " to i1" << endl;
             conditionReg.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
+        this->codeBuffer << tabs << "br i1 " << conditionReg.name << ", label " << then_Label << ", label " << else_Label << endl;
+        this->codeBuffer << "\n" << then_Label.substr(1) << ":" << endl;
 
-        // If the 'If' condition is A CERTAINT TRUE and known in COMPILATION TIME then no need to produce the else LLVM code (if exists)
-        if(conditionReg.isRegisterValueKnown && !conditionReg.isZero) {
-            this->codeBuffer << tabs << "br label " << then_Label << endl;
-            this->codeBuffer << "\n" << then_Label.substr(1) << ":" << endl;
-            if (node.getThen()->getType() == NODE_Statements) {
-                CodeGenerator_beginScope();
-            }
-            node.getThen()->accept(*this);
-            if (node.getThen()->getType() == NODE_Statements) {
-                CodeGenerator_endScope();
-            }
-            
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-            this->codeBuffer << tabs << "br label " << else_Label << endl;
-            this->codeBuffer << "\n" << else_Label.substr(1) << ":" << endl;
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-            this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
-        } // If the 'If' condition is A CERTAINT FALSE and known in COMPILATION TIME and an else block is defined then only the 'else' code can be produced
-        else if(conditionReg.isRegisterValueKnown && conditionReg.isZero) {
-            this->codeBuffer << tabs << "br label " << else_Label << endl;
-            this->codeBuffer << tabs << "br label " << then_Label << endl;
-            this->codeBuffer << "\n" << then_Label.substr(1) << ":" << endl;
-            this->codeBuffer << tabs << "br label " << else_Label << endl;
-            this->codeBuffer << "\n" << else_Label.substr(1) << ":" << endl;
+        if (node.getThen()->getType() == NODE_Statements) {
+            CodeGenerator_beginScope();
+        }
+        node.getThen()->accept(*this);
+        this->codeBuffer << tabs << "br label " << done_Label << endl;
+        if (node.getThen()->getType() == NODE_Statements) {
+            CodeGenerator_endScope();
+        }
+        CodeGenerator_endScope();
 
-            if (node.getElse()) {
-                CodeGenerator_beginScope();
-                if(node.getElse()->getType() == NODE_Statements) {
-                    CodeGenerator_beginScope();
-                }
-                node.getElse()->accept(*this);
-                this->codeBuffer << tabs << "br label " << done_Label << endl;
-                if(node.getElse()->getType() == NODE_Statements) {
-                    CodeGenerator_endScope();
-                }
-                CodeGenerator_endScope();
-            }
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-            this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
-        } else { // The 'If' condition value is not certaints in COMPILATION TIME
-            this->codeBuffer << tabs << "br i1 " << conditionReg.name << ", label " << then_Label << ", label " << else_Label << endl;
-            this->codeBuffer << "\n" << then_Label.substr(1) << ":" << endl;
-    
-            if (node.getThen()->getType() == NODE_Statements) {
+        this->codeBuffer << "\n" << else_Label.substr(1) << ":" << endl;
+        if (node.getElse()) {
+            CodeGenerator_beginScope();
+            if(node.getElse()->getType() == NODE_Statements) {
                 CodeGenerator_beginScope();
             }
-            node.getThen()->accept(*this);
+            node.getElse()->accept(*this);
             this->codeBuffer << tabs << "br label " << done_Label << endl;
-            if (node.getThen()->getType() == NODE_Statements) {
+            if(node.getElse()->getType() == NODE_Statements) {
                 CodeGenerator_endScope();
             }
             CodeGenerator_endScope();
-    
-            this->codeBuffer << "\n" << else_Label.substr(1) << ":" << endl;
-            if (node.getElse()) {
-                CodeGenerator_beginScope();
-                if(node.getElse()->getType() == NODE_Statements) {
-                    CodeGenerator_beginScope();
-                }
-                node.getElse()->accept(*this);
-                this->codeBuffer << tabs << "br label " << done_Label << endl;
-                if(node.getElse()->getType() == NODE_Statements) {
-                    CodeGenerator_endScope();
-                }
-                CodeGenerator_endScope();
-            }
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-            this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
         }
+        this->codeBuffer << tabs << "br label " << done_Label << endl;
+        this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
     }
 
     void visit(While& node) override {
@@ -771,25 +689,18 @@ public:
             this->codeBuffer << tabs << conditionReg.name << " = trunc i32 " << tmpReg.name << " to i1" << endl;
             conditionReg.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
+        this->codeBuffer << tabs << "br i1 " << conditionReg.name << ", label " << body_Label << ", label " << done_Label << endl;
+        this->codeBuffer << "\n" << body_Label.substr(1) << ":" << endl;
 
-        // If the while condition is A CERTAINT FALSE then no need to produce the body LLVM code
-        if(conditionReg.isRegisterValueKnown && conditionReg.isZero) {
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-        } else {
-            this->codeBuffer << tabs << "br i1 " << conditionReg.name << ", label " << body_Label << ", label " << done_Label << endl;
-            this->codeBuffer << "\n" << body_Label.substr(1) << ":" << endl;
-    
-            if (node.getBody()->getType() == NODE_Statements) {
-                CodeGenerator_beginScope();
-            }
-            node.getBody()->accept(*this);
-            this->codeBuffer << tabs << "br label " << condition_Label << endl;
-            this->codeBuffer << tabs << "br label " << done_Label << endl;
-            if (node.getBody()->getType() == NODE_Statements) {
-                CodeGenerator_endScope();
-            }
+        if (node.getBody()->getType() == NODE_Statements) {
+            CodeGenerator_beginScope();
         }
-
+        node.getBody()->accept(*this);
+        this->codeBuffer << tabs << "br label " << condition_Label << endl;
+        this->codeBuffer << tabs << "br label " << done_Label << endl;
+        if (node.getBody()->getType() == NODE_Statements) {
+            CodeGenerator_endScope();
+        }
         this->codeBuffer << "\n" << done_Label.substr(1) << ":" << endl;
         CodeGenerator_endScope();
     }
