@@ -110,7 +110,7 @@ namespace output {
 
     std::string CodeBuffer::emitString(const std::string &str) {
         std::string var = "@.str" + std::to_string(stringCount++);
-        globalsBuffer << var << " = constant [" << str.length() + 1 << " x i8] c\"" << str << "\\00\"";
+        globalsBuffer << var << " = constant [" << str.length() + 1 << " x i8] c\"" << str << "\\00\"" << endl;
         return var;
     }
 

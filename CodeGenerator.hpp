@@ -109,12 +109,12 @@ public:
 
     void visit(NumB& node) override {
         RegisterStruct currVar{this->codeBuffer.freshVar(), 0 == node.getValueInt()};
-        currVar.setRegisterValue(true, node.getValueInt());
 
         this->codeBuffer << tabs << currVar.name << " = add i32 " << node.getValueInt() << ", 0" << endl;
         RegisterStruct tmpVar = currVar;
         currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
         this->codeBuffer << tabs << currVar.name << " = and i32 " << tmpVar.name << ", 255" << endl;
+        currVar.setRegisterValue(true, node.getValueInt() & 255);
         node.setRegister(currVar);
     }
 
@@ -130,7 +130,7 @@ public:
     void visit(Bool& node) override {
         RegisterStruct currVar = {this->codeBuffer.freshVar(), true};
         int initBoolValue = node.getValueBool() ? 1 : 0;
-        currVar.isZero = !node.getValueBool();
+        currVar.setRegisterValue(true, node.getValueBool() ? 1 : 0);
         this->codeBuffer << tabs << currVar.name << " = add i32 " << initBoolValue << ", 0" << endl;
         node.setRegister(currVar);
     }
@@ -157,7 +157,9 @@ public:
             this->codeBuffer << tabs << leftValue.name << " = load i32, i32* " << leftReg.name << endl;
             leftValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            leftValue = node.getLeft()->getRegister(); // Maybe a result of add leftReg, 0
+            RegisterStruct tmpReg = node.getLeft()->getRegister();
+            leftValue.name = tmpReg.name;
+            leftValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
         if(node.getRight()->getType() == NODE_ID){
             rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
@@ -165,7 +167,9 @@ public:
             this->codeBuffer << tabs << rightValue.name << " = load i32, i32* " << rightReg.name << endl;
             rightValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
         } else {
-            rightValue = node.getRight()->getRegister(); // Maybe a result of add rightReg, 0
+            RegisterStruct tmpReg = node.getRight()->getRegister();
+            rightValue.name = tmpReg.name;
+            rightValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }        
 
         RegisterStruct currVar = {this->codeBuffer.freshVar(), true};
@@ -173,56 +177,67 @@ public:
         switch(node.getOp()) {
             case BinOpType::ADD:
                 // if left in numb and right is numb then truncate, else already written 
-                currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() + rightValue.getRegisterValue());
                 resultText += " = add i32 " + leftValue.name + ", " + rightValue.name;
-                if((leftValue.isZero && rightValue.isZero)){
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) && (rightValue.isRegisterValueKnown && rightValue.isZero))){
                     currVar.setRegisterValue(true, 0);
+                } else {
+                    int opretaionResult = leftValue.getRegisterValue() + rightValue.getRegisterValue();
+                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), opretaionResult);
                 }
                 break;
             case BinOpType::SUB:
-                currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() - rightValue.getRegisterValue());
                 resultText += " = sub i32 " + leftValue.name + ", " + rightValue.name;
                 if(leftValue.name == rightValue.name){
                     currVar.setRegisterValue(true, 0);
+                } else {
+                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() - rightValue.getRegisterValue());
                 }
                 break;
             case BinOpType::MUL:
-                currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() * rightValue.getRegisterValue());
                 resultText += " = mul i32 " + leftValue.name + ", " + rightValue.name;
-                if((leftValue.isZero || rightValue.isZero)){
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) || (rightValue.isRegisterValueKnown && rightValue.isZero))){
                     currVar.setRegisterValue(true, 0);
+                } else {
+                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() * rightValue.getRegisterValue());
                 }
                 break;
             case BinOpType::DIV:
-                if (rightValue.isZero) {
-                    const string divisionByZero = "Error division by zero";
-                    const string divZeroIdentifier = this->codeBuffer.emitString(divisionByZero);
-                    const int strSize = divisionByZero.size() + 1;
-                    RegisterStruct currVar{this->codeBuffer.freshVar(), false};
-                    this->codeBuffer << tabs << currVar.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << divZeroIdentifier << ", i32 0, i32 0" << endl;
+                const string divZero_labelPrefix = this->codeBuffer.freshLabel();
+                const string divZero_label = divZero_labelPrefix + ".divByZero";
+                const string legalDiv_label = divZero_labelPrefix + ".divNotZero";
+                RegisterStruct divCheckReg{this->codeBuffer.freshVar(), true};
+                this->codeBuffer << tabs << divCheckReg.name << " = icmp eq i32 " << rightValue.name << ", 0" << endl;
+                this->codeBuffer << tabs << "br i1 " << divCheckReg.name << ", label " << divZero_label << ", label " << legalDiv_label << endl;
+                
+                // Division By Zero Error
+                this->codeBuffer << divZero_label.substr(1) << ":" << endl;
+                const string divisionByZero = "Error division by zero";
+                const string divZeroIdentifier = this->codeBuffer.emitString(divisionByZero);
+                const int strSize = divisionByZero.size() + 1;
+                RegisterStruct divZeroErrStr{this->codeBuffer.freshVar(), false};
+                this->codeBuffer << tabs << divZeroErrStr.name << " = getelementptr [" << strSize << " x i8], [" << strSize << " x i8]* " << divZeroIdentifier << ", i32 0, i32 0" << endl;
+                // Execute Division By Zero Error
+                this->codeBuffer << tabs << "call void @print(i8* " + divZeroErrStr.name + ")" << endl;
+                this->codeBuffer << tabs << "call void @exit(i32 0)" << endl;
+                //FXIME - Check why the fucking exit is still executing commands after it!
+                resultText = currVar.name + " = sdiv i32 1, 1 ; This is done since exit is not called in some fucking unexplained reason";
+                this->codeBuffer << tabs << "br label " << legalDiv_label << endl;
 
-                    this->codeBuffer << tabs << "call void @print(i8* " + currVar.name + ")" << endl;
-                    this->codeBuffer << tabs << "call void @exit(i32 0)" << endl;
-                    //FXIME - Check why the fucking exit is still executing commands after it!
-                    resultText += " = sdiv i32 1, 1 ; This is done since exit is not called in some fucking unexplained reason";
-
-                } else {
-                    resultText += " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
-                    currVar.setRegisterValue((leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown), leftValue.getRegisterValue() / rightValue.getRegisterValue());
-                }
-                if((leftValue.isZero && !rightValue.isZero)){
+                // Standard Division
+                this->codeBuffer << legalDiv_label.substr(1) << ":" << endl;
+                resultText = currVar.name + " = sdiv i32 " + leftValue.name + ", " + rightValue.name;
+                if(((leftValue.isRegisterValueKnown && leftValue.isZero) && (rightValue.isRegisterValueKnown && !rightValue.isZero))){
                     currVar.setRegisterValue(true, 0);
                 }
                 break;
         }
         this->codeBuffer << tabs << resultText << endl;
-        if (!currVar.isZero) {
-            if(binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable) == BYTE) {
-                RegisterStruct tmpVar = currVar;
-                currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
-                this->codeBuffer << tabs << currVar.name + " = and i32 " + tmpVar.name + ", 255" << endl;
-                currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue() & 255);
-            }
+
+        if(BYTE == binOp_ResultType(*node.getLeft(), *node.getRight(), this->symbolTable)) {
+            RegisterStruct tmpVar = currVar;
+            currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
+            this->codeBuffer << tabs << currVar.name + " = and i32 " + tmpVar.name + ", 255" << endl;
+            currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue() & 255);
         }
 
         node.setRegister(currVar);
@@ -241,15 +256,21 @@ public:
             leftReg = this->symbolTable.getRegFromSymTable(node.getLeft()->getValueStr());
             leftValue = {this->codeBuffer.freshVar(), true};
             this->codeBuffer << tabs << leftValue.name << " = load i32, i32* " << leftReg.name << endl;
+            leftValue.setRegisterValue(leftReg.isRegisterValueKnown, leftReg.getRegisterValue());
         } else {
-            leftValue = node.getLeft()->getRegister(); // Maybe a result of add leftReg, 0
+            RegisterStruct tmpReg = node.getLeft()->getRegister();
+            leftValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
+            leftValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
         if(node.getRight()->getType() == NODE_ID) {
             rightReg = this->symbolTable.getRegFromSymTable(node.getRight()->getValueStr());
             rightValue = {this->codeBuffer.freshVar(), true};
             this->codeBuffer << tabs << rightValue.name << " = load i32, i32* " << rightReg.name << endl;
+            rightValue.setRegisterValue(rightReg.isRegisterValueKnown, rightReg.getRegisterValue());
         } else {
-            rightValue = node.getRight()->getRegister(); // Maybe a result of add rightReg, 0
+            RegisterStruct tmpReg = node.getRight()->getRegister();
+            rightValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
+            rightValue.setRegisterValue(tmpReg.isRegisterValueKnown, tmpReg.getRegisterValue());
         }
 
         RegisterStruct currVar{this->codeBuffer.freshVar(), true};
@@ -258,27 +279,35 @@ public:
             // TODO - Maybe we will have to jump to labels from here, where this code should be written? here or in the if/else and while
             case RelOpType::EQ:
                 resultText += " = icmp eq i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() == rightValue.getRegisterValue());
                 break;
             case RelOpType::NE:
                 resultText += " = icmp ne i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() != rightValue.getRegisterValue());
                 break;
             case RelOpType::LT:
                 resultText += " = icmp slt i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() < rightValue.getRegisterValue());
                 break;
             case RelOpType::GT:
                 resultText += " = icmp sgt i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() > rightValue.getRegisterValue());
                 break;
             case RelOpType::LE:
                 resultText += " = icmp sle i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() <= rightValue.getRegisterValue());
                 break;
             case RelOpType::GE:
                 resultText += " = icmp sge i32 " + leftValue.name + ", " + rightValue.name;
+                currVar.setRegisterValue(leftValue.isRegisterValueKnown && rightValue.isRegisterValueKnown, leftValue.getRegisterValue() >= rightValue.getRegisterValue());
                 break;
         }
         this->codeBuffer << tabs << resultText << endl;
         RegisterStruct tmpVar = currVar;
+        tmpVar.setRegisterValue(currVar.isRegisterValueKnown, currVar.getRegisterValue());
         currVar = {this->codeBuffer.freshVar(), tmpVar.isZero};
         this->codeBuffer << tabs << currVar.name << " = zext i1 " << tmpVar.name << " to i32" << endl;
+        currVar.setRegisterValue(tmpVar.isRegisterValueKnown, tmpVar.getRegisterValue());
         node.setRegister(currVar);
         node.setType(NODE_Bool);
     }
@@ -293,12 +322,16 @@ public:
             expReg = this->symbolTable.getRegFromSymTable(node.getExpr()->getValueStr());
             expBoolValue = {this->codeBuffer.freshVar(), true};
             this->codeBuffer << tabs << expBoolValue.name << " = load i32, i32* " << expReg.name << endl;
+            expBoolValue.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
         } else {
-            expBoolValue = node.getExpr()->getRegister(); // Maybe a result of add leftReg, 0
+            RegisterStruct tmpReg = node.getExpr()->getRegister();
+            expBoolValue.name = tmpReg.name; // Maybe a result of add leftReg, 0
+            expBoolValue.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
         }
 
         RegisterStruct currVar{this->codeBuffer.freshVar(), true};
         this->codeBuffer << tabs << currVar.name << " = xor i32 " << expBoolValue.name << ", 1" << endl;
+        currVar.setRegisterValue(expBoolValue.isRegisterValueKnown, !expBoolValue.getRegisterValue());
         node.setRegister(currVar);
     }
 
@@ -718,7 +751,7 @@ public:
     void visit(Assign& node) override {
         RegisterStruct currVar = this->symbolTable.getRegFromSymTable(node.getValueStr());
         RegisterStruct tmpVar = {this->codeBuffer.freshVar(), true};
-        RegisterStruct expReg = {"Undef", false};
+        RegisterStruct expReg;
 
         node.getAssignExp()->accept(*this);
 
@@ -730,11 +763,7 @@ public:
             expReg = node.getAssignExp()->getRegister();
             this->codeBuffer << tabs << "store i32 " << expReg.name << ", i32* " << currVar.name << endl;
         }
-        currVar.isZero = expReg.isZero;
         currVar.setRegisterValue(expReg.isRegisterValueKnown, expReg.getRegisterValue());
-        // cout << node.getValueStr() << " = " << currVar.getRegisterValue() << endl;
-        // cout << node.getValueStr() << " = " << currVar.isZero << endl;
-        // cout << node.getValueStr() << " = " << expReg.isRegisterValueKnown << endl;
         this->symbolTable.setRegInSymTable(node.getValueStr(), currVar);
     }
 
